@@ -1,0 +1,127 @@
+/* Import a clean font from Google */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Poppins', sans-serif;
+    background-image: url('bcg2.jpg');
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+.login-title{
+    color : rgba(255, 255, 255, 0.767);
+}
+/* Glassmorphism Card */
+.login-card {
+    background: #0000009d; 
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(12px);
+    padding: 50px 40px;
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+    width: 100%;
+    max-width: 380px;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.29);
+}
+
+.login-card h2 {
+    margin: 0 0 40px 0;
+    font-size: 32px;
+}
+
+/* Input Containers */
+.input-group {
+    position: relative;
+    margin-bottom: 25px;
+}
+
+.input-group i {
+    position: absolute;
+    left: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #000000;
+    opacity: 0.8;
+}
+
+
+input[type="email"], 
+input[type="password"] {
+    width: 100%;
+    padding: 15px 15px 15px 45px;
+    background: rgba(255, 255, 255, 0.21);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+    font-size: 16px;
+    color: white;
+    box-sizing: border-box;
+    transition: 0.3s;
+}
+
+input::placeholder { color: rgba(255, 255, 255, 0.7); }
+
+input:focus {
+    outline: none;
+    border-color: #2ecc71;
+    background: rgba(255, 255, 255, 0.25);
+}
+
+/* Login Button */
+.login-btn {
+    width: 100%;
+    padding: 16px;
+    background-color: #2ecc71;
+    border: none;
+    border-radius: 10px;
+    color: white;
+    font-size: 18px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 15px rgba(46, 204, 113, 0.3);
+    transition: 0.3s;
+}
+
+.login-btn:hover {
+    background-color: #27ae60;
+    transform: translateY(-2px);
+}
+
+/* Utils */
+.remember-row {
+    display: flex;
+    color: rgba(255, 253, 253, 0.7);
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+    margin-bottom: 25px;
+}
+
+.remember-row label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.remember-row input { margin-right: 8px; accent-color: #2ecc71; }
+
+.footer-links a {
+    color: #2ecc71;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.error-msg {
+    background: rgba(231, 76, 60, 0.8);
+    padding: 10px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    font-size: 14px;
+}
