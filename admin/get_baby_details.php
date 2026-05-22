@@ -10,6 +10,7 @@ if (!isset($_SESSION['role']) || !in_array($_SESSION['role'], ['Admin', 'Doctor'
 
 if (isset($_GET['baby_id'])) {
     try {
+        // Fetch unified details mapping baby metrics and maternal information profiles
         $stmt = $pdo->prepare("
             SELECT b.*, 
                    p.full_name as mother_name, p.dob as mother_dob, p.nic as mother_nic,
@@ -25,6 +26,11 @@ if (isset($_GET['baby_id'])) {
         $data = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if ($data) {
+            // NEW: Sub-query extraction loading time journey track logs array
+            $log_stmt = $pdo->prepare("SELECT * FROM patient_movement_logs WHERE baby_id = ? ORDER BY entered_at ASC");
+            $log_stmt->execute([$_GET['baby_id']]);
+            $data['movement_history'] = $log_stmt->fetchAll(PDO::FETCH_ASSOC);
+
             echo json_encode($data);
         } else {
             echo json_encode(['error' => 'Infant record not found']);

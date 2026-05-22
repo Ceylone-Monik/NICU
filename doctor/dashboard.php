@@ -2,6 +2,7 @@
 session_start();
 require '../config/db.php';
 
+// 1. SECURITY CHECK
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'Doctor') {
     header("Location: ../index.php");
     exit();
@@ -10,22 +11,32 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'Doctor') {
 $userId = $_SESSION['user_id'];
 $message = "";
 
+// 2. FETCH DOCTOR DATA
+$stmt = $pdo->prepare("SELECT users.full_name, doctor_details.specialization FROM users JOIN doctor_details ON users.id = doctor_details.user_id WHERE users.id = ?");
+$stmt->execute([$userId]);
+$doctor = $stmt->fetch();
+
+// 3. HANDLE REPORT SAVING (Mothers & Babies)
 if (isset($_POST['save_report'])) {
     try {
+        $p_id = !empty($_POST['p_id']) ? $_POST['p_id'] : null;
+        $baby_id = !empty($_POST['baby_id']) ? $_POST['baby_id'] : null;
+
         if (!empty($_POST['report_id'])) {
             $sql = "UPDATE medical_reports SET symptoms=?, diagnosis=?, vitals=?, prescription=?, remarks=? WHERE report_id=?";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([$_POST['symptoms'], $_POST['diagnosis'], $_POST['vitals'], $_POST['prescription'], $_POST['remarks'], $_POST['report_id']]);
         } else {
-            $sql = "INSERT INTO medical_reports (patient_id, doctor_id, symptoms, diagnosis, vitals, prescription, remarks) VALUES (?, ?, ?, ?, ?, ?, ?)";
+            $sql = "INSERT INTO medical_reports (patient_id, baby_id, doctor_id, symptoms, diagnosis, vitals, prescription, remarks) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
             $stmt = $pdo->prepare($sql);
-            $stmt->execute([$_POST['p_id'], $userId, $_POST['symptoms'], $_POST['diagnosis'], $_POST['vitals'], $_POST['prescription'], $_POST['remarks']]);
+            $stmt->execute([$p_id, $baby_id, $userId, $_POST['symptoms'], $_POST['diagnosis'], $_POST['vitals'], $_POST['prescription'], $_POST['remarks']]);
         }
         header("Location: dashboard.php?msg=Success");
         exit();
     } catch (Exception $e) { $message = "Error: " . $e->getMessage(); }
 }
 
+// 4. HANDLE SUBMITTING WARD MOVE RECOMMENDATION
 if (isset($_POST['submit_recommendation'])) {
     try {
         $stmt = $pdo->prepare("UPDATE babies SET recommended_ward = ?, recommendation_status = 'Pending' WHERE baby_id = ?");
@@ -34,18 +45,25 @@ if (isset($_POST['submit_recommendation'])) {
     } catch (Exception $e) { $message = "Error: " . $e->getMessage(); }
 }
 
+// 5. FETCH DATA ROSTERS
 $all_patients = $pdo->query("SELECT * FROM patients ORDER BY created_at DESC")->fetchAll(PDO::FETCH_ASSOC);
 
-$stmt_reports = $pdo->prepare("SELECT medical_reports.*, patients.full_name, patients.nic, patients.emergency_contact_name, patients.emergency_phone FROM medical_reports JOIN patients ON medical_reports.patient_id = patients.id WHERE medical_reports.doctor_id = ? ORDER BY created_at DESC");
+// Fetch reports history with fallback naming structures for infants
+$stmt_reports = $pdo->prepare("
+    SELECT r.*, 
+           p.full_name as mother_name, p.nic as mother_nic,
+           b.baby_name
+    FROM medical_reports r 
+    LEFT JOIN patients p ON r.patient_id = p.id 
+    LEFT JOIN babies b ON r.baby_id = b.baby_id
+    WHERE r.doctor_id = ? 
+    ORDER BY r.created_at DESC
+");
 $stmt_reports->execute([$userId]);
 $reports = $stmt_reports->fetchAll(PDO::FETCH_ASSOC);
 
 $query_babies = "SELECT b.*, p.full_name as mother_name FROM babies b JOIN patients p ON b.mother_id = p.id ORDER BY b.birth_date DESC";
 $all_babies = $pdo->query($query_babies)->fetchAll(PDO::FETCH_ASSOC);
-
-$stmt_doc = $pdo->prepare("SELECT users.full_name, doctor_details.specialization FROM users JOIN doctor_details ON users.id = doctor_details.user_id WHERE users.id = ?");
-$stmt_doc->execute([$userId]);
-$doctor = $stmt_doc->fetch();
 ?>
 
 <!DOCTYPE html>
@@ -64,13 +82,13 @@ $doctor = $stmt_doc->fetch();
         .detail-item { border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; }
         .detail-item label { color: #00ff96; font-size: 11px; text-transform: uppercase; font-weight: 600; display: block; margin-bottom: 5px; }
         .report-input { width: 100%; padding: 12px; margin-bottom: 15px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2); color: white; border-radius: 8px; }
-        
-        /* Row Trigger Class */
+        textarea.report-input { height: 100px; resize: none; }
+
         .clickable-baby-row { cursor: pointer; transition: 0.2s; }
-        .clickable-baby-row:hover { background: rgba(255, 0, 128, 0.05) !important; }
+        .clickable-baby-row:hover { background: rgba(0, 255, 150, 0.04) !important; }
         
         .action-btn-container { display: flex; align-items: center; justify-content: flex-start; gap: 10px; padding: 4px 0; }
-        .table-btn { padding: 8px 16px !important; font-size: 12px !important; font-weight: 700 !important; text-transform: uppercase; letter-spacing: 0.5px; border-radius: 8px !important; display: inline-flex !important; align-items: center; justify-content: center; gap: 6px; height: 36px !important; transition: all 0.3s ease !important; }
+        .table-btn { padding: 8px 16px !important; font-size: 12px !important; font-weight: 700 !important; text-transform: uppercase; letter-spacing: 0.5px; border-radius: 8px !important; display: inline-flex !important; align-items: center; justify-content: center; gap: 6px; height: 36px !important; transition: all 0.3s ease !important; border: none; cursor: pointer; }
         .table-btn.view-btn { background: linear-gradient(135deg, #00ff96 0%, #00cc7f 100%) !important; color: #1a1a2e !important; }
         .table-btn.report-btn { background: linear-gradient(135deg, #ffa502 0%, #ff8c00 100%) !important; color: #1a1a2e !important; }
         .table-btn.update-btn { background: linear-gradient(135deg, #3498db 0%, #2980b9 100%) !important; color: #ffffff !important; }
@@ -111,14 +129,14 @@ $doctor = $stmt_doc->fetch();
             <p><?php echo date('F d, Y'); ?></p>
         </div>
 
-        <?php if (!empty($message)): ?>
+        <?php if (!empty($message) || (isset($_GET['msg']) && $_GET['msg'] === 'Success')): ?>
             <div style="padding:15px; background:rgba(0,255,150,0.1); color:#00ff96; border-radius:10px; margin-bottom:20px; border: 1px solid #00ff96;">
-                <?php echo $message; ?>
+                <?php echo !empty($message) ? $message : "Medical report synchronized successfully!"; ?>
             </div>
         <?php endif; ?>
 
         <div id="home" class="section active">
-            <div class="card"><h3>Welcome, Dr. <?php echo $doctor['full_name']; ?></h3><p>Manage patients and submit neonatal ward moves.</p></div>
+            <div class="card"><h3>Welcome, Dr. <?php echo $doctor['full_name']; ?></h3><p>Manage patients, issue clinical prescriptions, and coordinate nursery ward assignments.</p></div>
         </div>
 
         <div id="patients" class="section">
@@ -136,7 +154,7 @@ $doctor = $stmt_doc->fetch();
                                     <button class="btn table-btn view-btn" onclick='openProfile(<?php echo json_encode($p); ?>)'>
                                         <i class="fas fa-eye"></i> View Details
                                     </button>
-                                    <button class="btn table-btn report-btn" onclick='openReportForm(<?php echo json_encode($p); ?>)'>
+                                    <button class="btn table-btn report-btn" onclick='openReportForm(<?php echo json_encode($p); ?>, "mother")'>
                                         <i class="fas fa-plus-circle"></i> Add Report
                                     </button>
                                 </div>
@@ -156,9 +174,9 @@ $doctor = $stmt_doc->fetch();
                         <tr>
                             <th>Infant Name</th>
                             <th>Mother</th>
-                            <th>Gender</th>
                             <th>Current Ward</th>
                             <th>Suggest Ward Move</th>
+                            <th>Action</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -166,32 +184,32 @@ $doctor = $stmt_doc->fetch();
                         <tr class="clickable-baby-row" onclick="openUnifiedModalFromDoctor(<?php echo $b['baby_id']; ?>)">
                             <td><strong><?php echo htmlspecialchars($b['baby_name']); ?></strong></td>
                             <td><?php echo htmlspecialchars($b['mother_name']); ?></td>
-                            <td><?php echo htmlspecialchars($b['baby_gender']); ?></td>
                             <td><span class="role-badge doctor"><?php echo htmlspecialchars($b['ward_name']); ?> Ward</span></td>
                             <td onclick="event.stopPropagation();">
                                 <?php if ($b['recommendation_status'] === 'Pending'): ?>
                                     <div class="status-badge-pending">
-                                        <i class="fas fa-hourglass-half"></i> Pending Admin Approval (-> <?php echo $b['recommended_ward']; ?>)
+                                        <i class="fas fa-hourglass-half"></i> Pending Admin (-> <?php echo $b['recommended_ward']; ?>)
                                     </div>
                                 <?php else: ?>
                                     <form method="POST" class="recommendation-form-box">
                                         <input type="hidden" name="baby_id" value="<?php echo $b['baby_id']; ?>">
                                         <select name="recommended_ward" class="select-recommend-input" required>
-                                            <option value="" selected disabled>Select Destination...</option>
+                                            <option value="" selected disabled>Select...</option>
                                             <?php 
                                             $options = ['Normal', 'Critical', 'Other', 'To Discharge'];
                                             foreach($options as $opt) {
-                                                if($opt !== $b['ward_name']) {
-                                                    echo "<option value='$opt'>$opt Ward</option>";
-                                                }
+                                                if($opt !== $b['ward_name']) { echo "<option value='$opt'>$opt</option>"; }
                                             }
                                             ?>
                                         </select>
-                                        <button type="submit" name="submit_recommendation" class="recommend-btn">
-                                            <i class="fas fa-paper-plane"></i> Send
-                                        </button>
+                                        <button type="submit" name="submit_recommendation" class="recommend-btn"><i class="fas fa-paper-plane"></i></button>
                                     </form>
                                 <?php endif; ?>
+                            </td>
+                            <td onclick="event.stopPropagation();">
+                                <button class="btn table-btn report-btn" style="height:30px !important; padding:4px 10px !important;" onclick='openReportForm(<?php echo json_encode($b); ?>, "baby")'>
+                                    <i class="fas fa-file-medical"></i> + Report
+                                </button>
                             </td>
                         </tr>
                         <?php endforeach; ?>
@@ -203,17 +221,23 @@ $doctor = $stmt_doc->fetch();
         <div id="reports" class="section">
             <div class="users-table-container">
                 <table class="users-table">
-                    <thead><tr><th>Patient</th><th>NIC</th><th>Date</th><th>Action</th></tr></thead>
+                    <thead><tr><th>Patient Type/Target</th><th>Reference Name</th><th>Date</th><th>Action</th></tr></thead>
                     <tbody>
                         <?php foreach ($reports as $r): ?>
                         <tr>
-                            <td><?php echo htmlspecialchars($r['full_name']); ?></td>
-                            <td><?php echo htmlspecialchars($r['nic']); ?></td>
+                            <td>
+                                <span class="role-badge <?php echo !empty($r['baby_id']) ? 'nurse' : 'doctor'; ?>">
+                                    <?php echo !empty($r['baby_id']) ? '👶 Infant' : '🤰 Mother'; ?>
+                                </span>
+                            </td>
+                            <td>
+                                <?php echo !empty($r['baby_id']) ? htmlspecialchars($r['baby_name']) . " (Infd.)" : htmlspecialchars($r['mother_name']); ?>
+                            </td>
                             <td><?php echo date('Y-m-d', strtotime($r['created_at'])); ?></td>
                             <td>
                                 <div class="action-btn-container">
                                     <button class="btn table-btn view-btn" onclick='viewReport(<?php echo json_encode($r); ?>)'>
-                                        <i class="fas fa-file-alt"></i> View Report
+                                        <i class="fas fa-file-alt"></i> View
                                     </button>
                                     <button class="btn table-btn update-btn" onclick='editReport(<?php echo json_encode($r); ?>)'>
                                         <i class="fas fa-edit"></i> Update
@@ -233,7 +257,7 @@ $doctor = $stmt_doc->fetch();
     <div class="modal-card">
         <div style="display:flex; justify-content:space-between; align-items:center;">
             <h2 id="modal_title" style="color:#00ff96; margin:0;"></h2>
-            <button class="btn" onclick="closeModal()" style="background:#ff4757; border:none;">&times;</button>
+            <button class="btn" onclick="closeModal()" style="background:#ff4757; border:none; color:white; cursor:pointer;">&times;</button>
         </div>
         <div id="profile_view_area" style="display:none;">
             <div class="detail-grid">
@@ -254,19 +278,21 @@ $doctor = $stmt_doc->fetch();
             </div>
         </div>
         <div id="emergency_row" style="display:none; margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
-            <label style="color:#00ff96; font-size:11px; text-transform:uppercase; font-weight:600;">Emergency Contact (Next of Kin)</label>
+            <label style="color:#00ff96; font-size:11px; text-transform:uppercase; font-weight:600;">Emergency Contact</label>
             <p style="margin:5px 0 0 0;"><span id="m_em_name" style="font-weight:600;"></span> <span id="m_em_phone" style="color:#aaa; margin-left:10px;"></span></p>
         </div>
         <div id="form_area" style="display:none; margin-top:20px;">
             <form method="POST">
                 <input type="hidden" name="p_id" id="f_p_id">
+                <input type="hidden" name="baby_id" id="f_baby_id">
                 <input type="hidden" name="report_id" id="f_rep_id">
+                
                 <div class="detail-grid" style="margin-top:0;">
-                    <input type="text" name="vitals" id="f_vitals" class="report-input" placeholder="Vitals (BP, Temp)">
-                    <input type="text" name="symptoms" id="f_symp" class="report-input" placeholder="Symptoms">
+                    <input type="text" name="vitals" id="f_vitals" class="report-input" placeholder="Vitals (BP, Temp, or Birth Weight)">
+                    <input type="text" name="symptoms" id="f_symp" class="report-input" placeholder="Symptoms / Observations">
                 </div>
-                <textarea name="diagnosis" id="f_diag" class="report-input" placeholder="Diagnosis"></textarea>
-                <textarea name="prescription" id="f_pres" class="report-input" placeholder="Prescription"></textarea>
+                <textarea name="diagnosis" id="f_diag" class="report-input" placeholder="Diagnosis / Clinical Impression"></textarea>
+                <textarea name="prescription" id="f_pres" class="report-input" placeholder="Prescription (Medications, Feed instructions)"></textarea>
                 <textarea name="remarks" id="f_rem" class="report-input" placeholder="Remarks"></textarea>
                 <button type="submit" name="save_report" class="btn" style="width:100%; background:#00ff96; color:#1a1a2e; font-weight:bold;">SAVE REPORT</button>
             </form>
@@ -277,8 +303,8 @@ $doctor = $stmt_doc->fetch();
 <div id="unifiedBabyModal" class="modal-overlay" style="z-index: 3000;">
     <div class="modal-card" style="border-color: #ff0080;">
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:10px;">
-            <h2 style="color:#ff0080; margin:0;"><i class="fas fa-notes-medical"></i> Full Case Study Overview</h2>
-            <button class="btn" onclick="closeUnifiedBabyModal()" style="background:#ff4757; border:none; padding:5px 12px;">&times;</button>
+            <h2 style="color:#ff0080; margin:0;"><i class="fas fa-notes-medical"></i> Case Overview</h2>
+            <button class="btn" onclick="closeUnifiedBabyModal()" style="background:#ff4757; border:none; padding:5px 12px; color:white; cursor:pointer;">&times;</button>
         </div>
         <div class="popup-split-grid">
             <div class="popup-col">
@@ -313,6 +339,7 @@ $doctor = $stmt_doc->fetch();
         document.getElementById('nav-' + id).classList.add('active');
     }
     function closeModal() { document.getElementById('modal').style.display = 'none'; }
+    function closeUnifiedBabyModal() { document.getElementById('unifiedBabyModal').style.display = 'none'; }
 
     function openUnifiedModalFromDoctor(babyId) {
         fetch('../admin/get_baby_details.php?baby_id=' + babyId)
@@ -328,17 +355,75 @@ $doctor = $stmt_doc->fetch();
                 document.getElementById('pop_b_notes').innerText = data.condition_notes || "None documented";
                 
                 document.getElementById('pop_m_name').innerText = data.mother_name;
-                document.getElementById('pop_m_book').innerText = data.clinic_book_no;
+                document.getElementById('pop_m_book').innerText = data.clinic_book_no || "N/A";
                 document.getElementById('pop_m_nic').innerText = data.mother_nic;
                 document.getElementById('pop_m_phone').innerText = data.mother_phone;
                 document.getElementById('pop_m_blood').innerText = data.mother_blood || "Unknown";
-                document.getElementById('pop_m_g').innerText = data.gravida;
-                document.getElementById('pop_m_p').innerText = data.para;
-                document.getElementById('pop_m_edd').innerText = data.edd_date;
+                document.getElementById('pop_m_g').innerText = data.gravida || "0";
+                document.getElementById('pop_m_p').innerText = data.para || "0";
+                document.getElementById('pop_m_edd').innerText = data.edd_date || "N/A";
                 document.getElementById('pop_m_risk').innerText = data.pregnancy_risk_factors || "None (Low Risk)";
             });
     }
-    function closeUnifiedBabyModal() { document.getElementById('unifiedBabyModal').style.display = 'none'; }
+
+    function openReportForm(data, targetType) {
+        document.getElementById('modal').style.display = 'flex';
+        document.getElementById('profile_view_area').style.display = 'none';
+        document.getElementById('emergency_row').style.display = 'none';
+        document.getElementById('report_view_area').style.display = 'none';
+        document.getElementById('form_area').style.display = 'block';
+        
+        // Reset old entry inputs cleanly
+        document.getElementById('f_rep_id').value = "";
+        document.getElementById('f_vitals').value = "";
+        document.getElementById('f_symp').value = "";
+        document.getElementById('f_diag').value = "";
+        document.getElementById('f_pres').value = "";
+        document.getElementById('f_rem').value = "";
+
+        if(targetType === 'baby') {
+            document.getElementById('modal_title').innerText = "Clinical Report: " + data.baby_name;
+            document.getElementById('f_baby_id').value = data.baby_id;
+            document.getElementById('f_p_id').value = "";
+        } else {
+            document.getElementById('modal_title').innerText = "Clinical Report: " + data.full_name;
+            document.getElementById('f_p_id').value = data.id;
+            document.getElementById('f_baby_id').value = "";
+        }
+    }
+
+    function viewReport(r) {
+        document.getElementById('modal').style.display = 'flex';
+        document.getElementById('modal_title').innerText = "Medical Record View";
+        document.getElementById('profile_view_area').style.display = 'none';
+        document.getElementById('emergency_row').style.display = 'none';
+        document.getElementById('report_view_area').style.display = 'block';
+        document.getElementById('form_area').style.display = 'none';
+        
+        document.getElementById('v_diag').innerText = r.diagnosis;
+        document.getElementById('v_vitals').innerText = r.vitals;
+        document.getElementById('v_symp').innerText = r.symptoms;
+        document.getElementById('v_pres').innerText = r.prescription;
+        document.getElementById('v_rem').innerText = r.remarks;
+    }
+
+    function editReport(r) {
+        document.getElementById('modal').style.display = 'flex';
+        document.getElementById('modal_title').innerText = "Update Clinical Report";
+        document.getElementById('profile_view_area').style.display = 'none';
+        document.getElementById('emergency_row').style.display = 'none';
+        document.getElementById('report_view_area').style.display = 'none';
+        document.getElementById('form_area').style.display = 'block';
+        
+        document.getElementById('f_rep_id').value = r.report_id;
+        document.getElementById('f_p_id').value = r.patient_id || "";
+        document.getElementById('f_baby_id').value = r.baby_id || "";
+        document.getElementById('f_vitals').value = r.vitals;
+        document.getElementById('f_symp').value = r.symptoms;
+        document.getElementById('f_diag').value = r.diagnosis;
+        document.getElementById('f_pres').value = r.prescription;
+        document.getElementById('f_rem').value = r.remarks;
+    }
 
     function fillBasicInfo(p) {
         document.getElementById('m_dob').innerText = p.dob;
@@ -346,9 +431,8 @@ $doctor = $stmt_doc->fetch();
         document.getElementById('m_blood').innerText = p.blood_group;
         document.getElementById('m_nic').innerText = p.nic;
         document.getElementById('m_allergies').innerText = p.allergies || "None";
-        document.getElementById('m_em_name').innerText = p.emergency_contact_name || "N/A";
-        document.getElementById('m_em_phone').innerText = p.emergency_phone ? "(" + p.emergency_phone + ")" : "";
     }
+
     function openProfile(p) {
         document.getElementById('modal').style.display = 'flex';
         document.getElementById('modal_title').innerText = "Patient Profile: " + p.full_name;
@@ -357,43 +441,6 @@ $doctor = $stmt_doc->fetch();
         document.getElementById('report_view_area').style.display = 'none';
         document.getElementById('form_area').style.display = 'none';
         fillBasicInfo(p);
-    }
-    function openReportForm(p) {
-        document.getElementById('modal').style.display = 'flex';
-        document.getElementById('modal_title').innerText = "New Report: " + p.full_name;
-        document.getElementById('profile_view_area').style.display = 'none';
-        document.getElementById('emergency_row').style.display = 'none';
-        document.getElementById('report_view_area').style.display = 'none';
-        document.getElementById('form_area').style.display = 'block';
-        document.getElementById('f_p_id').value = p.id;
-        document.getElementById('f_rep_id').value = "";
-    }
-    function viewReport(r) {
-        document.getElementById('modal').style.display = 'flex';
-        document.getElementById('modal_title').innerText = "Medical Record: " + r.full_name;
-        document.getElementById('profile_view_area').style.display = 'none';
-        document.getElementById('emergency_row').style.display = 'block';
-        document.getElementById('report_view_area').style.display = 'block';
-        document.getElementById('form_area').style.display = 'none';
-        document.getElementById('v_diag').innerText = r.diagnosis;
-        document.getElementById('v_vitals').innerText = r.vitals;
-        document.getElementById('v_symp').innerText = r.symptoms;
-        document.getElementById('v_pres').innerText = r.prescription;
-        document.getElementById('v_rem').innerText = r.remarks;
-    }
-    function editReport(r) {
-        document.getElementById('modal').style.display = 'flex';
-        document.getElementById('modal_title').innerText = "Edit Report: " + r.full_name;
-        document.getElementById('profile_view_area').style.display = 'none';
-        document.getElementById('emergency_row').style.display = 'none';
-        document.getElementById('report_view_area').style.display = 'none';
-        document.getElementById('form_area').style.display = 'block';
-        document.getElementById('f_rep_id').value = r.report_id;
-        document.getElementById('f_vitals').value = r.vitals;
-        document.getElementById('f_symp').value = r.symptoms;
-        document.getElementById('f_diag').value = r.diagnosis;
-        document.getElementById('f_pres').value = r.prescription;
-        document.getElementById('f_rem').value = r.remarks;
     }
 </script>
 </body>
