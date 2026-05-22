@@ -93,6 +93,9 @@ $all_reports = $pdo->query($report_query)->fetchAll(PDO::FETCH_ASSOC);
             <div class="nav-item active" id="btn-dashboard" onclick="showSection('dashboard')">
                 <i class="fas fa-home"></i> Admin Dashboard
             </div>
+            <div class="nav-item" id="btn-wards" onclick="window.location.href='wards.php'">
+                <i class="fas fa-procedures"></i> Wards
+            </div>
             <div class="nav-item" id="btn-staff" onclick="showSection('staff')">
                 <i class="fas fa-users-cog"></i> Staff Management
             </div>
@@ -102,6 +105,7 @@ $all_reports = $pdo->query($report_query)->fetchAll(PDO::FETCH_ASSOC);
             <div class="nav-item" id="btn-reports" onclick="showSection('reports')">
                 <i class="fas fa-chart-pie"></i> Reports
             </div>
+            
         </div>
 
         <div class="logout-section">

@@ -15,10 +15,11 @@ if (isset($_POST['add_patient'])) {
     try {
         $pdo->beginTransaction();
 
-        $nic = !empty($_POST['nic']) ? $_POST['nic'] : 'CHILD-' . time();
-        $patient_type = $_POST['patient_type'] ?? 'Normal';
+        // Check if patient is adult or minor based on NIC field presence
+        $nic = !empty($_POST['nic']) ? $_POST['nic'] : 'CHILD-' . time(); // Fallback for DB uniqueness if minor
+        $patient_type = 'Pregnant'; // Hardcoded since this system handles only pregnant mothers
         
-        // Updated SQL to include all new maternal clinical parameters
+        // SQL query directly mapped to your pm_hospital_management_system patients table
         $sql = "INSERT INTO patients (full_name, patient_type, dob, clinic_book_no, lmp_date, edd_date, gravida, para, pregnancy_risk_factors, guardian_name, guardian_nic, guardian_relation, gender, nic, phone, address, blood_group, allergies, emergency_contact_name, emergency_phone) 
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         
@@ -27,16 +28,16 @@ if (isset($_POST['add_patient'])) {
             $_POST['full_name'],
             $patient_type,
             $_POST['dob'],
-            ($patient_type === 'Pregnant') ? ($_POST['clinic_book_no'] ?? null) : null,
-            ($patient_type === 'Pregnant') ? ($_POST['lmp_date'] ?? null) : null,
-            ($patient_type === 'Pregnant') ? ($_POST['edd_date'] ?? null) : null,
-            ($patient_type === 'Pregnant') ? ((int)$_POST['gravida'] ?? null) : null,
-            ($patient_type === 'Pregnant') ? ((int)$_POST['para'] ?? null) : null,
-            ($patient_type === 'Pregnant') ? ($_POST['risk_factors'] ?? null) : null,
+            $_POST['clinic_book_no'],
+            $_POST['lmp_date'],
+            $_POST['edd_date'],
+            (int)$_POST['gravida'],
+            (int)$_POST['para'],
+            $_POST['risk_factors'],
             $_POST['guardian_name'] ?? null, 
             $_POST['guardian_nic'] ?? null, 
             $_POST['guardian_relation'] ?? null,
-            $_POST['gender'], 
+            'Female', // Force gender value directly to database destination
             $nic, 
             $_POST['phone'], 
             $_POST['address'] ?? null, 
@@ -47,7 +48,7 @@ if (isset($_POST['add_patient'])) {
         ]);
         
         $pdo->commit();
-        $message = "Patient record created successfully!";
+        $message = "Maternal record created successfully!";
     } catch (Exception $e) {
         $pdo->rollBack();
         $message = "Error: " . $e->getMessage();
@@ -59,7 +60,7 @@ if (isset($_POST['add_patient'])) {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Admin - Add Patient</title>
+    <title>Admin - Add Pregnant Mother</title>
     <link rel="stylesheet" href="../assets/dashboard.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
@@ -74,7 +75,7 @@ if (isset($_POST['add_patient'])) {
         }
         select option { background-color: #1a1a2e; color: white; }
 
-        input:disabled, select:disabled {
+        input:disabled {
             background: rgba(255, 255, 255, 0.02);
             border-color: rgba(255, 255, 255, 0.05);
             color: rgba(255, 255, 255, 0.2);
@@ -83,16 +84,11 @@ if (isset($_POST['add_patient'])) {
         }
 
         .form-section { max-width: 850px; background: rgba(30, 30, 40, 0.85); padding: 40px; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.1); margin: auto; box-shadow: 0 15px 35px rgba(0,0,0,0.5); }
-        h2, h4 { color: #00ff96; margin-bottom: 20px; font-weight: 600; }
+        h2, h4 { color: #ff0080; margin-bottom: 20px; font-weight: 600; }
         
-        /* Modern Tab Bar Styling */
-        .tab-container { display: flex; border-radius: 12px; background: rgba(0, 0, 0, 0.2); margin-bottom: 25px; padding: 5px; border: 1px solid rgba(255,255,255,0.1); }
-        .tab-btn { flex: 1; padding: 12px; text-align: center; color: #aaa; font-weight: 600; font-size: 14px; cursor: pointer; border-radius: 10px; transition: 0.3s; display: flex; align-items: center; justify-content: center; gap: 8px; }
-        .tab-btn.active { background: #00ff96; color: #1a1a2e; }
-
-        /* Animated Section Containers */
+        /* Permanent Container styling for clean dark card alignment */
+        .maternal-container { background: rgba(255, 0, 128, 0.04); border: 1px solid rgba(255, 0, 128, 0.2); padding: 25px; border-radius: 15px; margin: 20px 0; }
         #guardian_section { display: none; background: rgba(0, 255, 150, 0.03); border: 1px solid rgba(0, 255, 150, 0.1); padding: 25px; border-radius: 15px; margin: 20px 0; animation: slideDown 0.4s ease-out; }
-        #pregnant_section { display: none; background: rgba(255, 0, 128, 0.04); border: 1px solid rgba(255, 0, 128, 0.2); padding: 25px; border-radius: 15px; margin: 20px 0; animation: slideDown 0.4s ease-out; }
         
         @keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
@@ -120,69 +116,46 @@ if (isset($_POST['add_patient'])) {
         <?php endif; ?>
 
         <div class="form-section">
-            <h2><i class="fas fa-user-plus"></i> Add Patient Record</h2>
-            
-            <div class="tab-container">
-                <div class="tab-btn active" id="tab-normal" onclick="switchPatientType('Normal')">
-                    <i class="fas fa-user"></i> Standard Patient
-                </div>
-                <div class="tab-btn" id="tab-pregnant" onclick="switchPatientType('Pregnant')">
-                    <i class="fas fa-baby"></i> Pregnant Mother
-                </div>
-            </div>
+            <h2 style="color: #ff0080;"><i class="fas fa-baby"></i> Register Pregnant Mother</h2>
 
             <form method="POST" id="patientForm">
-                <input type="hidden" name="patient_type" id="patient_type_input" value="Normal">
-
                 <div class="form-grid">
                     <div class="input-group">
                         <label>Full Name</label>
-                        <input type="text" name="full_name" placeholder="Enter patient name" required>
+                        <input type="text" name="full_name" placeholder="Enter mother's name" required>
                     </div>
                     <div class="input-group">
                         <label>Date of Birth</label>
                         <input type="date" name="dob" id="dob_input" required onchange="checkAge()">
                     </div>
-                    <div class="input-group">
-                        <label id="nic_label">NIC / ID Number</label>
-                        <input type="text" name="nic" id="nic_input" placeholder="Patient NIC" required>
-                    </div>
-                    <div class="input-group">
-                        <label>Gender</label>
-                        <select name="gender" id="gender_select">
-                            <option value="Male">Male</option>
-                            <option value="Female">Female</option>
-                            <option value="Other">Other</option>
-                        </select>
-                    </div>
                 </div>
 
-                <div id="pregnant_section">
-                    <h4 style="color: #ff0080;"><i class="fas fa-heartbeat"></i> Maternal Clinical Intake Form</h4>
+                <div class="maternal-container">
+                    <h4><i class="fas fa-heartbeat"></i> Maternal Clinical Records</h4>
                     <div class="form-grid">
                         <div class="input-group">
                             <label>Clinic Book Number</label>
-                            <input type="text" name="clinic_book_no" id="clinic_book_no" placeholder="e.g., MOH/MAL/2026/115">
+                            <input type="text" name="clinic_book_no" placeholder="e.g., MOH/MAL/2026/115" required>
                         </div>
                         <div class="input-group">
                             <label>Last Menstrual Period (LMP)</label>
-                            <input type="date" name="lmp_date" id="lmp_date" onchange="calculateEDD()">
+                            <input type="date" name="lmp_date" id="lmp_date" onchange="calculateEDD()" required>
                         </div>
                         <div class="input-group">
                             <label>Expected Date of Delivery (EDD)</label>
-                            <input type="date" name="edd_date" id="edd_date">
+                            <input type="date" name="edd_date" id="edd_date" required>
                         </div>
                         <div class="input-group">
                             <label>Gravida (Total Pregnancies)</label>
-                            <input type="number" name="gravida" id="gravida" min="1" value="1">
+                            <input type="number" name="gravida" min="1" value="1" required>
                         </div>
                         <div class="input-group">
                             <label>Para (Viable Births)</label>
-                            <input type="number" name="para" id="para" min="0" value="0">
+                            <input type="number" name="para" min="0" value="0" required>
                         </div>
                         <div class="input-group">
                             <label>Risk Factors / Conditions</label>
-                            <input type="text" name="risk_factors" id="risk_factors" placeholder="e.g., None, Gestational Diabetes, PIH">
+                            <input type="text" name="risk_factors" placeholder="e.g., None, Gestational Diabetes">
                         </div>
                     </div>
                 </div>
@@ -199,18 +172,22 @@ if (isset($_POST['add_patient'])) {
                             <input type="text" name="guardian_nic" id="g_nic">
                         </div>
                         <div class="input-group full-width">
-                            <label>Relationship to Child</label>
-                            <input type="text" name="guardian_relation" placeholder="e.g. Mother, Father, Aunt">
+                            <label>Relationship to Teen</label>
+                            <input type="text" name="guardian_relation" placeholder="e.g. Mother, Father">
                         </div>
                     </div>
                 </div>
 
                 <div class="form-grid">
                     <div class="input-group">
+                        <label id="nic_label">NIC / ID Number</label>
+                        <input type="text" name="nic" id="nic_input" placeholder="Patient NIC" required>
+                    </div>
+                    <div class="input-group">
                         <label>Phone Number</label>
                         <input type="text" name="phone" required>
                     </div>
-                    <div class="input-group">
+                    <div class="input-group full-width">
                         <label>Blood Group</label>
                         <select name="blood_group">
                             <option value="Unknown">Unknown</option>
@@ -225,62 +202,29 @@ if (isset($_POST['add_patient'])) {
                         <textarea name="allergies" placeholder="List any known allergies..."></textarea>
                     </div>
                     
-                    <div class="full-width"><h4><i class="fas fa-phone-alt"></i> Emergency Contact</h4></div>
+                    <div class="full-width"><h4 style="color: #00ff96;"><i class="fas fa-phone-alt"></i> Emergency Contact</h4></div>
                     <div class="input-group">
                         <label>Contact Name</label>
-                        <input type="text" name="emergency_name">
+                        <input type="text" name="emergency_name" required>
                     </div>
                     <div class="input-group">
                         <label>Emergency Phone</label>
-                        <input type="text" name="emergency_phone">
+                        <input type="text" name="emergency_phone" required>
                     </div>
                 </div>
 
-                <button type="submit" name="add_patient" class="btn" style="margin-top: 20px; width: 100%;">✓ REGISTER PATIENT</button>
+                <button type="submit" name="add_patient" class="btn" style="margin-top: 20px; width: 100%; background: #ff0080; color: white; border: none;">✓ REGISTER PREGNANT MOTHER</button>
             </form>
-            <a href="dashboard.php" style="color:#00ff96; text-decoration:none; display:block; margin-top:20px; text-align: center;">← Back to Dashboard</a>
+            <a href="dashboard.php" style="color:#ff0080; text-decoration:none; display:block; margin-top:20px; text-align: center;">← Back to Dashboard</a>
         </div>
     </div>
 </div>
 
 <script>
-function switchPatientType(type) {
-    document.getElementById('patient_type_input').value = type;
-    
-    const tabNormal = document.getElementById('tab-normal');
-    const tabPregnant = document.getElementById('tab-pregnant');
-    const pregSection = document.getElementById('pregnant_section');
-    const genderSelect = document.getElementById('gender_select');
-
-    if (type === 'Pregnant') {
-        tabPregnant.classList.add('active');
-        tabNormal.classList.remove('active');
-        pregSection.style.display = 'block';
-        
-        // Auto-select Female and lock selection
-        genderSelect.value = 'Female';
-        genderSelect.disabled = true;
-
-        // Force maternal fields to become mandatory
-        document.getElementById('clinic_book_no').required = true;
-        document.getElementById('lmp_date').required = true;
-    } else {
-        tabNormal.classList.add('active');
-        tabPregnant.classList.remove('active');
-        pregSection.style.display = 'none';
-        
-        genderSelect.disabled = false;
-
-        document.getElementById('clinic_book_no').required = false;
-        document.getElementById('lmp_date').required = false;
-    }
-}
-
 function calculateEDD() {
     const lmpValue = document.getElementById('lmp_date').value;
     if (!lmpValue) return;
 
-    // Mittendorf-Naegele's Rule (+7 days, +9 months)
     let lmpDate = new Date(lmpValue);
     lmpDate.setDate(lmpDate.getDate() + 7);
     lmpDate.setMonth(lmpDate.getMonth() + 9);
@@ -309,10 +253,8 @@ function checkAge() {
     const nicInput = document.getElementById('nic_input');
     const gName = document.getElementById('g_name');
     const gNic = document.getElementById('g_nic');
-    const tabPregnant = document.getElementById('tab-pregnant');
 
     if (age < 18) {
-        // Minor logic
         guardianSection.style.display = 'block';
         nicInput.disabled = true;
         nicInput.placeholder = "Not required for minors";
@@ -321,13 +263,7 @@ function checkAge() {
 
         gName.required = true;
         gNic.required = true;
-        
-        // Minor safety rule: reset tab to normal and disable maternal selection features
-        switchPatientType('Normal');
-        tabPregnant.style.pointerEvents = 'none';
-        tabPregnant.style.opacity = '0.3';
     } else {
-        // Adult logic
         guardianSection.style.display = 'none';
         nicInput.disabled = false;
         nicInput.placeholder = "Enter Patient NIC";
@@ -335,17 +271,8 @@ function checkAge() {
 
         gName.required = false;
         gNic.required = false;
-        
-        tabPregnant.style.pointerEvents = 'auto';
-        tabPregnant.style.opacity = '1';
     }
 }
-
-// Intercept submittal processing stream to ensure the locked gender select values post to the DB cleanly
-document.getElementById('patientForm').addEventListener('submit', function() {
-    document.getElementById('gender_select').disabled = false;
-});
 </script>
-
 </body>
 </html>

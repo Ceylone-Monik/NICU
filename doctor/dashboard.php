@@ -2,20 +2,14 @@
 session_start();
 require '../config/db.php';
 
-// 1. SECURITY CHECK
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'Doctor') {
     header("Location: ../index.php");
     exit();
 }
 
 $userId = $_SESSION['user_id'];
+$message = "";
 
-// 2. FETCH DOCTOR DATA
-$stmt = $pdo->prepare("SELECT users.full_name, doctor_details.specialization FROM users JOIN doctor_details ON users.id = doctor_details.user_id WHERE users.id = ?");
-$stmt->execute([$userId]);
-$doctor = $stmt->fetch();
-
-// 3. HANDLE REPORT SAVING
 if (isset($_POST['save_report'])) {
     try {
         if (!empty($_POST['report_id'])) {
@@ -29,15 +23,29 @@ if (isset($_POST['save_report'])) {
         }
         header("Location: dashboard.php?msg=Success");
         exit();
-    } catch (Exception $e) { $error = $e->getMessage(); }
+    } catch (Exception $e) { $message = "Error: " . $e->getMessage(); }
 }
 
-// 4. FETCH DATA
+if (isset($_POST['submit_recommendation'])) {
+    try {
+        $stmt = $pdo->prepare("UPDATE babies SET recommended_ward = ?, recommendation_status = 'Pending' WHERE baby_id = ?");
+        $stmt->execute([$_POST['recommended_ward'], $_POST['baby_id']]);
+        $message = "Recommendation submitted to Administrator successfully!";
+    } catch (Exception $e) { $message = "Error: " . $e->getMessage(); }
+}
+
 $all_patients = $pdo->query("SELECT * FROM patients ORDER BY created_at DESC")->fetchAll(PDO::FETCH_ASSOC);
 
 $stmt_reports = $pdo->prepare("SELECT medical_reports.*, patients.full_name, patients.nic, patients.emergency_contact_name, patients.emergency_phone FROM medical_reports JOIN patients ON medical_reports.patient_id = patients.id WHERE medical_reports.doctor_id = ? ORDER BY created_at DESC");
 $stmt_reports->execute([$userId]);
 $reports = $stmt_reports->fetchAll(PDO::FETCH_ASSOC);
+
+$query_babies = "SELECT b.*, p.full_name as mother_name FROM babies b JOIN patients p ON b.mother_id = p.id ORDER BY b.birth_date DESC";
+$all_babies = $pdo->query($query_babies)->fetchAll(PDO::FETCH_ASSOC);
+
+$stmt_doc = $pdo->prepare("SELECT users.full_name, doctor_details.specialization FROM users JOIN doctor_details ON users.id = doctor_details.user_id WHERE users.id = ?");
+$stmt_doc->execute([$userId]);
+$doctor = $stmt_doc->fetch();
 ?>
 
 <!DOCTYPE html>
@@ -55,9 +63,28 @@ $reports = $stmt_reports->fetchAll(PDO::FETCH_ASSOC);
         .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
         .detail-item { border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; }
         .detail-item label { color: #00ff96; font-size: 11px; text-transform: uppercase; font-weight: 600; display: block; margin-bottom: 5px; }
-        .guardian-box { grid-column: span 2; background: rgba(255, 165, 0, 0.1); border: 1px solid rgba(255, 165, 0, 0.3); padding: 15px; border-radius: 12px; margin-top: 10px; }
         .report-input { width: 100%; padding: 12px; margin-bottom: 15px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2); color: white; border-radius: 8px; }
-        textarea.report-input { height: 100px; resize: none; }
+        
+        /* Row Trigger Class */
+        .clickable-baby-row { cursor: pointer; transition: 0.2s; }
+        .clickable-baby-row:hover { background: rgba(255, 0, 128, 0.05) !important; }
+        
+        .action-btn-container { display: flex; align-items: center; justify-content: flex-start; gap: 10px; padding: 4px 0; }
+        .table-btn { padding: 8px 16px !important; font-size: 12px !important; font-weight: 700 !important; text-transform: uppercase; letter-spacing: 0.5px; border-radius: 8px !important; display: inline-flex !important; align-items: center; justify-content: center; gap: 6px; height: 36px !important; transition: all 0.3s ease !important; }
+        .table-btn.view-btn { background: linear-gradient(135deg, #00ff96 0%, #00cc7f 100%) !important; color: #1a1a2e !important; }
+        .table-btn.report-btn { background: linear-gradient(135deg, #ffa502 0%, #ff8c00 100%) !important; color: #1a1a2e !important; }
+        .table-btn.update-btn { background: linear-gradient(135deg, #3498db 0%, #2980b9 100%) !important; color: #ffffff !important; }
+        
+        .recommendation-form-box { display: flex; align-items: center; gap: 10px; }
+        .select-recommend-input { padding: 6px 10px; border-radius: 6px; background: #1a1a2e; border: 1px solid rgba(255,255,255,0.2); color: white; font-size: 12px; cursor: pointer; height: 34px; }
+        .recommend-btn { padding: 0 12px; background: #00ff96; color: #1a1a2e; border: none; font-weight: bold; border-radius: 6px; font-size: 11px; cursor: pointer; text-transform: uppercase; height: 34px; }
+        .status-badge-pending { padding: 5px 10px; background: rgba(255, 165, 0, 0.15); color: #ffa502; border: 1px solid rgba(255, 165, 0, 0.3); border-radius: 6px; font-size: 11px; font-weight: bold; }
+
+        .popup-split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; margin-top: 15px; }
+        .popup-col h4 { border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; margin-bottom: 12px; font-weight: 600; }
+        .data-row { margin-bottom: 10px; font-size: 13px; text-align: left; }
+        .data-row label { display: block; color: #aaa; font-size: 11px; text-transform: uppercase; margin-bottom: 2px; font-weight: 600; }
+        .data-row span { color: #fff; }
     </style>
 </head>
 <body>
@@ -72,6 +99,7 @@ $reports = $stmt_reports->fetchAll(PDO::FETCH_ASSOC);
         <div class="nav-menu">
             <div class="nav-item active" id="nav-home" onclick="showSection('home')"><i class="fas fa-home"></i> Dashboard</div>
             <div class="nav-item" id="nav-patients" onclick="showSection('patients')"><i class="fas fa-user-injured"></i> Patients</div>
+            <div class="nav-item" id="nav-babies" onclick="showSection('babies')"><i class="fas fa-baby"></i> Infants (Wards)</div>
             <div class="nav-item" id="nav-reports" onclick="showSection('reports')"><i class="fas fa-file-medical"></i> Reports History</div>
         </div>
         <div class="logout-section"><a href="../logout.php" class="logout-btn">🛑 Logout</a></div>
@@ -83,8 +111,14 @@ $reports = $stmt_reports->fetchAll(PDO::FETCH_ASSOC);
             <p><?php echo date('F d, Y'); ?></p>
         </div>
 
+        <?php if (!empty($message)): ?>
+            <div style="padding:15px; background:rgba(0,255,150,0.1); color:#00ff96; border-radius:10px; margin-bottom:20px; border: 1px solid #00ff96;">
+                <?php echo $message; ?>
+            </div>
+        <?php endif; ?>
+
         <div id="home" class="section active">
-            <div class="card"><h3>Welcome, Dr. <?php echo $doctor['full_name']; ?></h3><p>Manage patients and reports using the menu.</p></div>
+            <div class="card"><h3>Welcome, Dr. <?php echo $doctor['full_name']; ?></h3><p>Manage patients and submit neonatal ward moves.</p></div>
         </div>
 
         <div id="patients" class="section">
@@ -97,9 +131,67 @@ $reports = $stmt_reports->fetchAll(PDO::FETCH_ASSOC);
                             <td><?php echo htmlspecialchars($p['full_name']); ?></td>
                             <td><?php echo htmlspecialchars($p['nic']); ?></td>
                             <td><?php echo htmlspecialchars($p['phone']); ?></td>
-                            <td style="display:flex; gap:10px;">
-                                <button class="btn" style="background:#00ff96; color:#1a1a2e;" onclick='openProfile(<?php echo json_encode($p); ?>)'>VIEW DETAILS</button>
-                                <button class="btn" style="background:#ffa502;" onclick='openReportForm(<?php echo json_encode($p); ?>)'>ADD REPORT</button>
+                            <td>
+                                <div class="action-btn-container">
+                                    <button class="btn table-btn view-btn" onclick='openProfile(<?php echo json_encode($p); ?>)'>
+                                        <i class="fas fa-eye"></i> View Details
+                                    </button>
+                                    <button class="btn table-btn report-btn" onclick='openReportForm(<?php echo json_encode($p); ?>)'>
+                                        <i class="fas fa-plus-circle"></i> Add Report
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="babies" class="section">
+            <div class="users-table-container">
+                <div class="table-header"><h3>👶 Active Nursery Wards Roster</h3></div>
+                <table class="users-table">
+                    <thead>
+                        <tr>
+                            <th>Infant Name</th>
+                            <th>Mother</th>
+                            <th>Gender</th>
+                            <th>Current Ward</th>
+                            <th>Suggest Ward Move</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($all_babies as $b): ?>
+                        <tr class="clickable-baby-row" onclick="openUnifiedModalFromDoctor(<?php echo $b['baby_id']; ?>)">
+                            <td><strong><?php echo htmlspecialchars($b['baby_name']); ?></strong></td>
+                            <td><?php echo htmlspecialchars($b['mother_name']); ?></td>
+                            <td><?php echo htmlspecialchars($b['baby_gender']); ?></td>
+                            <td><span class="role-badge doctor"><?php echo htmlspecialchars($b['ward_name']); ?> Ward</span></td>
+                            <td onclick="event.stopPropagation();">
+                                <?php if ($b['recommendation_status'] === 'Pending'): ?>
+                                    <div class="status-badge-pending">
+                                        <i class="fas fa-hourglass-half"></i> Pending Admin Approval (-> <?php echo $b['recommended_ward']; ?>)
+                                    </div>
+                                <?php else: ?>
+                                    <form method="POST" class="recommendation-form-box">
+                                        <input type="hidden" name="baby_id" value="<?php echo $b['baby_id']; ?>">
+                                        <select name="recommended_ward" class="select-recommend-input" required>
+                                            <option value="" selected disabled>Select Destination...</option>
+                                            <?php 
+                                            $options = ['Normal', 'Critical', 'Other', 'To Discharge'];
+                                            foreach($options as $opt) {
+                                                if($opt !== $b['ward_name']) {
+                                                    echo "<option value='$opt'>$opt Ward</option>";
+                                                }
+                                            }
+                                            ?>
+                                        </select>
+                                        <button type="submit" name="submit_recommendation" class="recommend-btn">
+                                            <i class="fas fa-paper-plane"></i> Send
+                                        </button>
+                                    </form>
+                                <?php endif; ?>
                             </td>
                         </tr>
                         <?php endforeach; ?>
@@ -118,9 +210,15 @@ $reports = $stmt_reports->fetchAll(PDO::FETCH_ASSOC);
                             <td><?php echo htmlspecialchars($r['full_name']); ?></td>
                             <td><?php echo htmlspecialchars($r['nic']); ?></td>
                             <td><?php echo date('Y-m-d', strtotime($r['created_at'])); ?></td>
-                            <td style="display:flex; gap:10px;">
-                                <button class="btn" style="background:#00ff96; color:#1a1a2e;" onclick='viewReport(<?php echo json_encode($r); ?>)'>VIEW REPORT</button>
-                                <button class="btn" style="background:#3498db; color:white;" onclick='editReport(<?php echo json_encode($r); ?>)'>UPDATE</button>
+                            <td>
+                                <div class="action-btn-container">
+                                    <button class="btn table-btn view-btn" onclick='viewReport(<?php echo json_encode($r); ?>)'>
+                                        <i class="fas fa-file-alt"></i> View Report
+                                    </button>
+                                    <button class="btn table-btn update-btn" onclick='editReport(<?php echo json_encode($r); ?>)'>
+                                        <i class="fas fa-edit"></i> Update
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                         <?php endforeach; ?>
@@ -137,7 +235,6 @@ $reports = $stmt_reports->fetchAll(PDO::FETCH_ASSOC);
             <h2 id="modal_title" style="color:#00ff96; margin:0;"></h2>
             <button class="btn" onclick="closeModal()" style="background:#ff4757; border:none;">&times;</button>
         </div>
-
         <div id="profile_view_area" style="display:none;">
             <div class="detail-grid">
                 <div class="detail-item"><label>DOB</label><span id="m_dob"></span></div>
@@ -145,13 +242,8 @@ $reports = $stmt_reports->fetchAll(PDO::FETCH_ASSOC);
                 <div class="detail-item"><label>Blood Group</label><span id="m_blood"></span></div>
                 <div class="detail-item"><label>NIC</label><span id="m_nic"></span></div>
                 <div class="detail-item" style="grid-column: span 2;"><label>Medical Allergies</label><span id="m_allergies"></span></div>
-                <div id="m_guardian_box" class="guardian-box" style="display:none;">
-                    <h4 style="color:#ffa502; margin:0 0 10px 0;">Guardian Details</h4>
-                    <span id="m_g_name"></span> (<span id="m_g_rel"></span>)
-                </div>
             </div>
         </div>
-
         <div id="report_view_area" style="display:none; margin-top:20px;">
             <div class="detail-grid" style="border-top: 1px dashed #00ff96; padding-top: 20px;">
                 <div class="detail-item" style="grid-column: span 2;"><label>Diagnosis</label><span id="v_diag"></span></div>
@@ -161,12 +253,10 @@ $reports = $stmt_reports->fetchAll(PDO::FETCH_ASSOC);
                 <div class="detail-item" style="grid-column: span 2;"><label>Doctor Remarks</label><span id="v_rem"></span></div>
             </div>
         </div>
-
         <div id="emergency_row" style="display:none; margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
             <label style="color:#00ff96; font-size:11px; text-transform:uppercase; font-weight:600;">Emergency Contact (Next of Kin)</label>
             <p style="margin:5px 0 0 0;"><span id="m_em_name" style="font-weight:600;"></span> <span id="m_em_phone" style="color:#aaa; margin-left:10px;"></span></p>
         </div>
-
         <div id="form_area" style="display:none; margin-top:20px;">
             <form method="POST">
                 <input type="hidden" name="p_id" id="f_p_id">
@@ -184,6 +274,37 @@ $reports = $stmt_reports->fetchAll(PDO::FETCH_ASSOC);
     </div>
 </div>
 
+<div id="unifiedBabyModal" class="modal-overlay" style="z-index: 3000;">
+    <div class="modal-card" style="border-color: #ff0080;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:10px;">
+            <h2 style="color:#ff0080; margin:0;"><i class="fas fa-notes-medical"></i> Full Case Study Overview</h2>
+            <button class="btn" onclick="closeUnifiedBabyModal()" style="background:#ff4757; border:none; padding:5px 12px;">&times;</button>
+        </div>
+        <div class="popup-split-grid">
+            <div class="popup-col">
+                <h4 style="color:#00ff96;"><i class="fas fa-baby"></i> Infant Parameters</h4>
+                <div class="data-row"><label>Baby Name</label><span id="pop_b_name"></span></div>
+                <div class="data-row"><label>Gender</label><span id="pop_b_gender"></span></div>
+                <div class="data-row"><label>Birth Date / Time</label><span id="pop_b_dob"></span></div>
+                <div class="data-row"><label>Weight</label><span id="pop_b_weight"></span></div>
+                <div class="data-row"><label>Current Ward</label><span id="pop_b_ward" style="font-weight:bold; color:#00ff96;"></span></div>
+                <div class="data-row"><label>Condition Notes</label><span id="pop_b_notes"></span></div>
+            </div>
+            <div class="popup-col">
+                <h4 style="color:#ff0080;"><i class="fas fa-female"></i> Mother Profile</h4>
+                <div class="data-row"><label>Mother Full Name</label><span id="pop_m_name"></span></div>
+                <div class="data-row"><label>Clinic Book Reference</label><span id="pop_m_book"></span></div>
+                <div class="data-row"><label>Identity Card (NIC)</label><span id="pop_m_nic"></span></div>
+                <div class="data-row"><label>Phone Contact</label><span id="pop_m_phone"></span></div>
+                <div class="data-row"><label>Blood Specification</label><span id="pop_m_blood"></span></div>
+                <div class="data-row"><label>Obstetric Metrics (G/P)</label>Gravida <span id="pop_m_g"></span>, Para <span id="pop_m_p"></span></div>
+                <div class="data-row"><label>Expected Delivery Window (EDD)</label><span id="pop_m_edd"></span></div>
+                <div class="data-row"><label>Maternal Risk Factors</label><span id="pop_m_risk" style="color:#ff4757; font-weight:bold;"></span></div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
     function showSection(id) {
         document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
@@ -191,10 +312,34 @@ $reports = $stmt_reports->fetchAll(PDO::FETCH_ASSOC);
         document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
         document.getElementById('nav-' + id).classList.add('active');
     }
-
     function closeModal() { document.getElementById('modal').style.display = 'none'; }
 
-    // Helper to fill basic patient data
+    function openUnifiedModalFromDoctor(babyId) {
+        fetch('../admin/get_baby_details.php?baby_id=' + babyId)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) { alert(data.error); return; }
+                document.getElementById('unifiedBabyModal').style.display = 'flex';
+                document.getElementById('pop_b_name').innerText = data.baby_name;
+                document.getElementById('pop_b_gender').innerText = data.baby_gender;
+                document.getElementById('pop_b_dob').innerText = data.birth_date;
+                document.getElementById('pop_b_weight').innerText = data.weight_kg + " kg";
+                document.getElementById('pop_b_ward').innerText = data.ward_name + " Ward";
+                document.getElementById('pop_b_notes').innerText = data.condition_notes || "None documented";
+                
+                document.getElementById('pop_m_name').innerText = data.mother_name;
+                document.getElementById('pop_m_book').innerText = data.clinic_book_no;
+                document.getElementById('pop_m_nic').innerText = data.mother_nic;
+                document.getElementById('pop_m_phone').innerText = data.mother_phone;
+                document.getElementById('pop_m_blood').innerText = data.mother_blood || "Unknown";
+                document.getElementById('pop_m_g').innerText = data.gravida;
+                document.getElementById('pop_m_p').innerText = data.para;
+                document.getElementById('pop_m_edd').innerText = data.edd_date;
+                document.getElementById('pop_m_risk').innerText = data.pregnancy_risk_factors || "None (Low Risk)";
+            });
+    }
+    function closeUnifiedBabyModal() { document.getElementById('unifiedBabyModal').style.display = 'none'; }
+
     function fillBasicInfo(p) {
         document.getElementById('m_dob').innerText = p.dob;
         document.getElementById('m_gender').innerText = p.gender;
@@ -203,15 +348,7 @@ $reports = $stmt_reports->fetchAll(PDO::FETCH_ASSOC);
         document.getElementById('m_allergies').innerText = p.allergies || "None";
         document.getElementById('m_em_name').innerText = p.emergency_contact_name || "N/A";
         document.getElementById('m_em_phone').innerText = p.emergency_phone ? "(" + p.emergency_phone + ")" : "";
-        
-        const gBox = document.getElementById('m_guardian_box');
-        if(p.guardian_name) {
-            gBox.style.display = 'block';
-            document.getElementById('m_g_name').innerText = p.guardian_name;
-            document.getElementById('m_g_rel').innerText = p.guardian_relation;
-        } else { gBox.style.display = 'none'; }
     }
-
     function openProfile(p) {
         document.getElementById('modal').style.display = 'flex';
         document.getElementById('modal_title').innerText = "Patient Profile: " + p.full_name;
@@ -221,7 +358,6 @@ $reports = $stmt_reports->fetchAll(PDO::FETCH_ASSOC);
         document.getElementById('form_area').style.display = 'none';
         fillBasicInfo(p);
     }
-
     function openReportForm(p) {
         document.getElementById('modal').style.display = 'flex';
         document.getElementById('modal_title').innerText = "New Report: " + p.full_name;
@@ -231,9 +367,7 @@ $reports = $stmt_reports->fetchAll(PDO::FETCH_ASSOC);
         document.getElementById('form_area').style.display = 'block';
         document.getElementById('f_p_id').value = p.id;
         document.getElementById('f_rep_id').value = "";
-        document.querySelector('form').reset();
     }
-
     function viewReport(r) {
         document.getElementById('modal').style.display = 'flex';
         document.getElementById('modal_title').innerText = "Medical Record: " + r.full_name;
@@ -241,16 +375,12 @@ $reports = $stmt_reports->fetchAll(PDO::FETCH_ASSOC);
         document.getElementById('emergency_row').style.display = 'block';
         document.getElementById('report_view_area').style.display = 'block';
         document.getElementById('form_area').style.display = 'none';
-        
         document.getElementById('v_diag').innerText = r.diagnosis;
         document.getElementById('v_vitals').innerText = r.vitals;
         document.getElementById('v_symp').innerText = r.symptoms;
         document.getElementById('v_pres').innerText = r.prescription;
         document.getElementById('v_rem').innerText = r.remarks;
-        document.getElementById('m_em_name').innerText = r.emergency_contact_name || "N/A";
-        document.getElementById('m_em_phone').innerText = r.emergency_phone ? "(" + r.emergency_phone + ")" : "";
     }
-
     function editReport(r) {
         document.getElementById('modal').style.display = 'flex';
         document.getElementById('modal_title').innerText = "Edit Report: " + r.full_name;
@@ -258,7 +388,6 @@ $reports = $stmt_reports->fetchAll(PDO::FETCH_ASSOC);
         document.getElementById('emergency_row').style.display = 'none';
         document.getElementById('report_view_area').style.display = 'none';
         document.getElementById('form_area').style.display = 'block';
-        
         document.getElementById('f_rep_id').value = r.report_id;
         document.getElementById('f_vitals').value = r.vitals;
         document.getElementById('f_symp').value = r.symptoms;
