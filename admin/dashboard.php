@@ -45,12 +45,11 @@ $nurse_count_stmt = $pdo->query("SELECT COUNT(*) as total FROM users WHERE role 
 $total_nurses = $nurse_count_stmt->fetch(PDO::FETCH_ASSOC)['total'] ?? 0;
 
 
-// --- REPORTS LOGIC (New) ---
-// Fetching all medical reports with Patient and Doctor names
+// --- REPORTS LOGIC ---
 $report_query = "SELECT r.*, p.full_name as patient_name, u.full_name as doctor_name 
                  FROM medical_reports r
-                 JOIN patients p ON r.patient_id = p.id
-                 JOIN users u ON r.doctor_id = u.id
+                 LEFT JOIN patients p ON r.patient_id = p.id
+                 LEFT JOIN users u ON r.doctor_id = u.id
                  ORDER BY r.created_at DESC";
 $all_reports = $pdo->query($report_query)->fetchAll(PDO::FETCH_ASSOC);
 ?>
@@ -64,19 +63,19 @@ $all_reports = $pdo->query($report_query)->fetchAll(PDO::FETCH_ASSOC);
     <link rel="stylesheet" href="../assets/dashboard.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        /* Style for the View Details button in reports */
-        .btn-view { background: #00ff96 !important; color: #1a1a2e !important; padding: 5px 12px; border-radius: 5px; text-decoration: none; font-size: 12px; font-weight: bold; }
-        
-        /* Modal Style for Viewing Report Details */
+        .btn-view { background: #00ff96 !important; color: #1a1a2e !important; padding: 5px 12px; border-radius: 5px; text-decoration: none; font-size: 12px; font-weight: bold; border: none; cursor: pointer; }
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(10px); z-index: 1000; justify-content: center; align-items: center; }
         .modal-card { background: rgba(30, 30, 45, 1); border: 1px solid rgba(0, 255, 150, 0.3); width: 95%; max-width: 600px; padding: 30px; border-radius: 20px; color: white; box-shadow: 0 0 40px rgba(0,0,0,0.5); }
-        .detail-item { margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; }
-        .detail-item label { color: #00ff96; font-size: 11px; text-transform: uppercase; display: block; }
+        .detail-item { margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; text-align: left; }
+        .detail-item label { color: #00ff96; font-size: 11px; text-transform: uppercase; display: block; margin-bottom: 2px; }
 
-        /* Pagination Style */
         .pagination { display: flex; justify-content: center; gap: 10px; margin-top: 20px; }
         .pagination a { padding: 8px 15px; background: rgba(255,255,255,0.1); color: white; text-decoration: none; border-radius: 5px; border: 1px solid rgba(0,255,150,0.3); }
         .pagination a.active { background: #00ff96; color: #1a1a2e; font-weight: bold; }
+
+        /* Style to show rows are click-navigable */
+        .clickable-patient-row { cursor: pointer; transition: background 0.2s; }
+        .clickable-patient-row:hover { background: rgba(0, 255, 150, 0.05) !important; }
     </style>
 </head>
 <body>
@@ -85,8 +84,8 @@ $all_reports = $pdo->query($report_query)->fetchAll(PDO::FETCH_ASSOC);
     <div class="sidebar">
         <div class="profile-section">
             <div class="avatar">🧑‍💼</div>
-            <h3><?php echo htmlspecialchars($_SESSION['username'] ?? 'Pawan'); ?></h3>
-            <p><?php echo htmlspecialchars($_SESSION['role'] ?? 'Administrator'); ?></p>
+            <h3>Pawan</h3>
+            <p>Administrator</p>
         </div>
 
         <div class="nav-menu">
@@ -105,7 +104,6 @@ $all_reports = $pdo->query($report_query)->fetchAll(PDO::FETCH_ASSOC);
             <div class="nav-item" id="btn-reports" onclick="showSection('reports')">
                 <i class="fas fa-chart-pie"></i> Reports
             </div>
-            
         </div>
 
         <div class="logout-section">
@@ -119,14 +117,12 @@ $all_reports = $pdo->query($report_query)->fetchAll(PDO::FETCH_ASSOC);
             <p>Current Date: <?php echo date('F d, Y'); ?></p>
         </div>
 
-        <!-- Dashboard Section -->
         <div id="dashboard" class="section active">
             <div class="dashboard-welcome">
                 <h2>Welcome to Admin Dashboard</h2>
                 <p>Here's an overview of your hospital's current statistics.</p>
             </div>
 
-            <!-- Statistics Cards -->
             <div class="stats-container">
                 <div class="stat-card">
                     <div class="stat-icon doctor-icon">👨‍⚕️</div>
@@ -169,7 +165,7 @@ $all_reports = $pdo->query($report_query)->fetchAll(PDO::FETCH_ASSOC);
                     <tbody>
                         <?php foreach ($users as $user): ?>
                         <tr>
-                            <td>#<?php echo $user['id']; ?></td>
+                            #<td><?php echo $user['id']; ?></td>
                             <td><?php echo htmlspecialchars($user['full_name']); ?></td>
                             <td><?php echo htmlspecialchars($user['email']); ?></td>
                             <td><span class="role-badge <?php echo strtolower($user['role']); ?>"><?php echo $user['role']; ?></span></td>
@@ -193,7 +189,7 @@ $all_reports = $pdo->query($report_query)->fetchAll(PDO::FETCH_ASSOC);
         <div id="patients" class="section">
             <div class="card">
                 <h3>🏥 Patient Management</h3>
-                <p>You have <strong><?php echo $total_patients; ?></strong> registered patients in the system.</p>
+                <p>Click on any mother's record table line to explore her delivery records and child ward stay analytics history.</p>
                 <a href="add_patient.php" class="btn">+ Add New Patient</a>
             </div>
             <div class="users-table-container">
@@ -202,12 +198,12 @@ $all_reports = $pdo->query($report_query)->fetchAll(PDO::FETCH_ASSOC);
                     <div class="user-count">Page <?php echo $patient_page; ?> of <?php echo $total_patient_pages; ?></div>
                 </div>
                 <table class="users-table">
-                    <thead><tr><th>ID</th><th>Name</th><th>NIC</th><th>Phone</th><th>Date</th></tr></thead>
+                    <thead><tr><th>ID</th><th>Name</th><th>NIC</th><th>Phone</th><th>Admitted Date</th></tr></thead>
                     <tbody>
                         <?php foreach ($recent_patients as $p): ?>
-                        <tr>
+                        <tr class="clickable-patient-row" onclick="window.location.href='mother_history.php?id=<?php echo $p['id']; ?>'">
                             <td>#<?php echo $p['id']; ?></td>
-                            <td><?php echo htmlspecialchars($p['full_name']); ?></td>
+                            <td><strong><?php echo htmlspecialchars($p['full_name']); ?></strong></td>
                             <td><?php echo htmlspecialchars($p['nic']); ?></td>
                             <td><?php echo htmlspecialchars($p['phone']); ?></td>
                             <td><?php echo date('M d, Y', strtotime($p['created_at'])); ?></td>
@@ -250,9 +246,9 @@ $all_reports = $pdo->query($report_query)->fetchAll(PDO::FETCH_ASSOC);
                     <tbody>
                         <?php foreach ($all_reports as $report): ?>
                         <tr>
-                            <td><?php echo htmlspecialchars($report['patient_name']); ?></td>
-                            <td>Dr. <?php echo htmlspecialchars($report['doctor_name']); ?></td>
-                            <td><?php echo htmlspecialchars($report['diagnosis']); ?></td>
+                            <td><?php echo htmlspecialchars($report['patient_name'] ?? 'N/A'); ?></td>
+                            <td>Dr. <?php echo htmlspecialchars($report['doctor_name'] ?? 'Staff'); ?></td>
+                            <td><?php echo htmlspecialchars($report['diagnosis'] ?? 'N/A'); ?></td>
                             <td><?php echo date('M d, Y', strtotime($report['created_at'])); ?></td>
                             <td>
                                 <button class="btn-view" onclick='viewReport(<?php echo json_encode($report); ?>)'>VIEW</button>
@@ -288,7 +284,6 @@ $all_reports = $pdo->query($report_query)->fetchAll(PDO::FETCH_ASSOC);
 </div>
 
 <script>
-    // Set active tab from URL parameter on page load
     document.addEventListener('DOMContentLoaded', function() {
         const urlParams = new URLSearchParams(window.location.search);
         const activeTab = urlParams.get('tab') || 'dashboard';

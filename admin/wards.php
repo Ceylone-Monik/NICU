@@ -2,15 +2,20 @@
 session_start();
 require_once '../config/db.php';
 
+// SECURITY CHECK: Admins only
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'Admin') {
     header("Location: ../index.php");
     exit();
 }
 
-$message = "";
+$alert_message = "";
 
+// 1. HANDLE NEW BABY REGISTRATION WITH TIME JOURNEY LOGS
 if (isset($_POST['register_baby'])) {
     try {
+        $pdo->beginTransaction();
+
+        // A. Insert the baby record into the babies data table
         $stmt = $pdo->prepare("INSERT INTO babies (mother_id, baby_name, baby_gender, birth_date, weight_kg, condition_notes, ward_name) VALUES (?, ?, ?, ?, ?, ?, ?)");
         $stmt->execute([
             $_POST['mother_id'],
@@ -21,49 +26,85 @@ if (isset($_POST['register_baby'])) {
             $_POST['condition_notes'],
             $_POST['initial_ward']
         ]);
+        
+        $new_baby_id = $pdo->lastInsertId();
+
+        // B. Automatically generate the initial timeline track path
+        $log_stmt = $pdo->prepare("INSERT INTO patient_movement_logs (baby_id, action_type, from_ward, to_ward) VALUES (?, 'Admission', 'None', ?)");
+        $log_stmt->execute([$new_baby_id, $_POST['initial_ward']]);
+
+        $pdo->commit();
         header("Location: wards.php?msg=BabyRegistered");
         exit();
-    } catch (Exception $e) { $message = "Error: " . $e->getMessage(); }
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        $alert_message = "Error: " . $e->getMessage();
+    }
 }
 
-if (isset($_POST['change_ward'])) {
-    try {
-        $stmt = $pdo->prepare("UPDATE babies SET ward_name = ?, recommendation_status = 'None' WHERE baby_id = ?");
-        $stmt->execute([$_POST['ward_name'], $_POST['baby_id']]);
-        header("Location: wards.php?msg=TransferSuccess");
-        exit();
-    } catch (Exception $e) { $message = "Error: " . $e->getMessage(); }
-}
-
+// 2. HANDLE APPROVING DOCTOR'S RECOMMENDATION
 if (isset($_POST['approve_recommendation'])) {
     try {
-        $stmt = $pdo->prepare("UPDATE babies SET ward_name = recommended_ward, recommendation_status = 'None', recommended_ward = NULL WHERE baby_id = ?");
-        $stmt->execute([$_POST['baby_id']]);
+        $pdo->beginTransaction();
+        $baby_id = $_POST['baby_id'];
+
+        // Get active positioning values before shifting tracking arrays
+        $curr_stmt = $pdo->prepare("SELECT ward_name, recommended_ward FROM babies WHERE baby_id = ?");
+        $curr_stmt->execute([$baby_id]);
+        $baby_info = $curr_stmt->fetch(PDO::FETCH_ASSOC);
+        
+        $old_ward = $baby_info['ward_name'];
+        $new_ward = $baby_info['recommended_ward'];
+
+        if ($old_ward !== $new_ward) {
+            // Update table registry pointer
+            $stmt = $pdo->prepare("UPDATE babies SET ward_name = ?, recommendation_status = 'None', recommended_ward = NULL WHERE baby_id = ?");
+            $stmt->execute([$new_ward, $baby_id]);
+
+            // Close old movement tracking layer log row
+            $close_stmt = $pdo->prepare("
+                UPDATE patient_movement_logs 
+                SET left_at = NOW(),
+                    duration_days = ROUND(TIMESTAMPDIFF(SECOND, entered_at, NOW()) / 86400, 2)
+                WHERE baby_id = ? AND left_at IS NULL
+            ");
+            $close_stmt->execute([$baby_id]);
+
+            // Open approved entry line track step
+            $action = ($new_ward === 'To Discharge') ? 'Discharge' : 'Transfer';
+            $open_stmt = $pdo->prepare("INSERT INTO patient_movement_logs (baby_id, action_type, from_ward, to_ward) VALUES (?, ?, ?, ?)");
+            $open_stmt->execute([$baby_id, $action, $old_ward, $new_ward]);
+        }
+
+        $pdo->commit();
         header("Location: wards.php?msg=Approved");
         exit();
-    } catch (Exception $e) { $message = "Error: " . $e->getMessage(); }
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        $alert_message = "Error: " . $e->getMessage();
+    }
 }
 
+// 3. HANDLE REJECTING DOCTOR'S RECOMMENDATION
 if (isset($_POST['reject_recommendation'])) {
     try {
         $stmt = $pdo->prepare("UPDATE babies SET recommendation_status = 'None', recommended_ward = NULL WHERE baby_id = ?");
         $stmt->execute([$_POST['baby_id']]);
         header("Location: wards.php?msg=Rejected");
         exit();
-    } catch (Exception $e) { $message = "Error: " . $e->getMessage(); }
+    } catch (Exception $e) { $alert_message = "Error: " . $e->getMessage(); }
 }
 
+// FETCH DATA FOR NAVIGATION COUNT PANELS
 $mothers = $pdo->query("SELECT id, full_name, clinic_book_no FROM patients WHERE patient_type = 'Pregnant' ORDER BY full_name ASC")->fetchAll(PDO::FETCH_ASSOC);
 $pending_recommendations = $pdo->query("SELECT b.*, p.full_name as mother_name FROM babies b JOIN patients p ON b.mother_id = p.id WHERE b.recommendation_status = 'Pending' ORDER BY b.created_at ASC")->fetchAll(PDO::FETCH_ASSOC);
 
-$wards = ['Normal' => [], 'Critical' => [], 'Other' => [], 'To Discharge' => []];
-$all_babies = $pdo->query("SELECT b.*, p.full_name as mother_name FROM babies b JOIN patients p ON b.mother_id = p.id ORDER BY b.birth_date DESC")->fetchAll(PDO::FETCH_ASSOC);
-
-foreach ($all_babies as $baby) {
-    if (array_key_exists($baby['ward_name'], $wards)) {
-        $wards[$baby['ward_name']][] = $baby;
-    }
-}
+$counts = [
+    'Normal' => $pdo->query("SELECT COUNT(*) FROM babies WHERE ward_name='Normal'")->fetchColumn(),
+    'Critical' => $pdo->query("SELECT COUNT(*) FROM babies WHERE ward_name='Critical'")->fetchColumn(),
+    'Other' => $pdo->query("SELECT COUNT(*) FROM babies WHERE ward_name='Other'")->fetchColumn(),
+    'To Discharge' => $pdo->query("SELECT COUNT(*) FROM babies WHERE ward_name='To Discharge'")->fetchColumn(),
+];
 ?>
 
 <!DOCTYPE html>
@@ -71,7 +112,7 @@ foreach ($all_babies as $baby) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Neonatal Wards Management</title>
+    <title>Neonatal Wards Overview</title>
     <link rel="stylesheet" href="../assets/dashboard.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
@@ -86,30 +127,20 @@ foreach ($all_babies as $baby) {
         .btn-approve { background: #00ff96; color: #1a1a2e; }
         .btn-reject { background: #ff4757; color: white; }
 
-        .ward-layout-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
-        .ward-column-card { background: rgba(30, 30, 45, 0.95); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 18px; padding: 20px; min-height: 400px; display: flex; flex-direction: column; }
-        .ward-header { font-size: 15px; font-weight: bold; text-transform: uppercase; padding-bottom: 12px; margin-bottom: 15px; border-bottom: 2px solid; display: flex; align-items: center; gap: 10px; }
-        .ward-normal { color: #00ff96; border-bottom-color: #00ff96; }
-        .ward-critical { color: #ff4757; border-bottom-color: #ff4757; }
-        .ward-other { color: #3498db; border-bottom-color: #3498db; }
-        .ward-discharge { color: #e67e22; border-bottom-color: #e67e22; }
+        .ward-layout-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
+        .ward-nav-card { background: rgba(30, 30, 45, 0.85); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 18px; padding: 30px 20px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 15px; transition: all 0.3s ease; box-shadow: 0 10px 25px rgba(0,0,0,0.3); cursor: pointer; }
+        .ward-nav-card.card-normal { border-left: 5px solid #00ff96; }
+        .ward-nav-card.card-critical { border-left: 5px solid #ff4757; }
+        .ward-nav-card.card-other { border-left: 5px solid #3498db; }
+        .ward-nav-card.card-discharge { border-left: 5px solid #e67e22; }
 
-        .patient-list-container { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
-        .patient-bed-tile { background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); padding: 15px; border-radius: 10px; cursor: pointer; transition: 0.2s; }
-        .patient-bed-tile:hover { background: rgba(0, 255, 150, 0.05); border-color: #00ff96; }
-        .patient-bed-tile h5 { margin: 0 0 5px 0; color: #00ff96; font-size: 14px; }
-        .patient-bed-tile p { margin: 0 0 8px 0; color: #ccc; font-size: 12px; line-height: 1.4; }
-        .select-transfer-input { width: 100%; padding: 8px; border-radius: 6px; background: #1a1a2e; border: 1px solid rgba(255,255,255,0.2); color: white; font-size: 12px; cursor: pointer; }
-        .empty-bed-notice { color: #555; text-align: center; font-style: italic; margin-top: 40px; font-size: 13px; }
-
-        /* Unified Popup Overlay Setup Style */
-        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(10px); z-index: 2000; justify-content: center; align-items: center; }
-        .modal-card { background: rgba(30, 30, 45, 1); border: 1px solid #ff0080; width: 95%; max-width: 800px; padding: 30px; border-radius: 20px; color: white; max-height: 90vh; overflow-y: auto; }
-        .popup-split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; margin-top: 15px; }
-        .popup-col h4 { border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; margin-bottom: 12px; font-weight: 600; }
-        .data-row { margin-bottom: 10px; font-size: 13px; }
-        .data-row label { display: block; color: #aaa; font-size: 11px; text-transform: uppercase; margin-bottom: 2px; font-weight: 600; }
-        .data-row span { color: #fff; }
+        .ward-nav-card:hover { transform: translateY(-5px); box-shadow: 0 15px 35px rgba(0,0,0,0.5); background: rgba(40, 40, 60, 0.9); }
+        .ward-nav-card i { font-size: 40px; }
+        .card-normal i { color: #00ff96; } .card-critical i { color: #ff4757; } .card-other i { color: #3498db; } .card-discharge i { color: #e67e22; }
+        .ward-title-txt { color: #fff; font-size: 16px; font-weight: bold; text-transform: uppercase; margin: 0; }
+        
+        .nav-view-btn { margin-top: 5px; padding: 8px 18px; border: none; border-radius: 8px; font-size: 12px; font-weight: bold; text-transform: uppercase; background: rgba(255,255,255,0.06); color: #fff; border: 1px solid rgba(255,255,255,0.1); }
+        .ward-nav-card:hover .nav-view-btn { background: #00ff96; color: #1a1a2e; border-color: #00ff96; }
     </style>
 </head>
 <body>
@@ -130,9 +161,15 @@ foreach ($all_babies as $baby) {
     <div class="main-content">
         <div class="content-header">
             <h1>Infant Ward Management Portal</h1>
-            <p>Current Date: <?php echo date('F d, Y'); ?></p>
+            <p>Select a ward compartment card below to execute trace audits.</p>
         </div>
 
+        <?php if (!empty($alert_message)): ?>
+            <div style="padding:15px; background:rgba(255,71,87,0.1); color:#ff4757; border-radius:10px; margin-bottom:20px; border: 1px solid #ff4757;"><?php echo $alert_message; ?></div>
+        <?php endif; ?>
+        <?php if (isset($_GET['msg']) && $_GET['msg'] === 'BabyRegistered'): ?>
+            <div style="padding:15px; background:rgba(0,255,150,0.1); color:#00ff96; border-radius:10px; margin-bottom:20px; border: 1px solid #00ff96;">✔ New baby details saved and assigned to ward. Timeline history active.</div>
+        <?php endif; ?>
         <?php if (isset($_GET['msg']) && $_GET['msg'] === 'Approved'): ?>
             <div style="padding:15px; background:rgba(0,255,150,0.1); color:#00ff96; border-radius:10px; margin-bottom:20px; border: 1px solid #00ff96;">✔ Doctor recommendation Approved. Infant successfully transferred.</div>
         <?php endif; ?>
@@ -196,105 +233,32 @@ foreach ($all_babies as $baby) {
         </div>
 
         <div class="ward-layout-grid">
-            <?php foreach ($wards as $ward_title => $babies_in_ward): ?>
-                <div class="ward-column-card">
-                    <div class="ward-header ward-<?php echo strtolower(explode(' ', $ward_title)[0]); ?>">
-                        <i class="fas fa-baby"></i> <?php echo $ward_title; ?> Ward (<?php echo count($babies_in_ward); ?>)
-                    </div>
-                    <div class="patient-list-container">
-                        <?php if (empty($babies_in_ward)): ?><div class="empty-bed-notice">No infants here</div><?php endif; ?>
-                        <?php foreach ($babies_in_ward as $b): ?>
-                            <div class="patient-bed-tile" onclick="openUnifiedModal(<?php echo $b['baby_id']; ?>, event)">
-                                <h5><?php echo htmlspecialchars($b['baby_name']); ?></h5>
-                                <p>
-                                    <strong>Mother:</strong> <?php echo htmlspecialchars($b['mother_name']); ?><br>
-                                    <strong>Gender:</strong> <?php echo htmlspecialchars($b['baby_gender']); ?><br>
-                                    <strong>Born:</strong> <?php echo date('M d, H:i', strtotime($b['birth_date'])); ?><br>
-                                    <strong>Weight:</strong> <?php echo $b['weight_kg']; ?> kg
-                                </p>
-                                <form method="POST" onclick="event.stopPropagation();">
-                                    <input type="hidden" name="baby_id" value="<?php echo $b['baby_id']; ?>">
-                                    <select name="ward_name" class="select-transfer-input" onchange="this.form.submit()">
-                                        <option value="" selected disabled>Transfer to...</option>
-                                        <option value="Normal" <?php if($ward_title=='Normal') echo 'disabled'; ?>>Normal Ward</option>
-                                        <option value="Critical" <?php if($ward_title=='Critical') echo 'disabled'; ?>>Critical Ward</option>
-                                        <option value="Other" <?php if($ward_title=='Other') echo 'disabled'; ?>>Other Ward</option>
-                                        <option value="To Discharge" <?php if($ward_title=='To Discharge') echo 'disabled'; ?>>To Discharge</option>
-                                    </select>
-                                    <input type="hidden" name="change_ward" value="1">
-                                </form>
-                            </div>
-                        <?php endforeach; ?>
-                    </div>
-                </div>
-            <?php endforeach; ?>
-        </div>
-    </div>
-</div>
-
-<div id="unifiedModal" class="modal-overlay">
-    <div class="modal-card">
-        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:10px;">
-            <h2 style="color:#ff0080; margin:0;"><i class="fas fa-hospital-user"></i> Clinical Case Overview</h2>
-            <button class="btn" onclick="closeUnifiedModal()" style="background:#ff4757; border:none; padding:5px 12px;">&times;</button>
-        </div>
-        <div class="popup-split-grid">
-            <div class="popup-col">
-                <h4 style="color:#00ff96;"><i class="fas fa-baby"></i> Infant Tracking Records</h4>
-                <div class="data-row"><label>Baby Name</label><span id="pop_b_name"></span></div>
-                <div class="data-row"><label>Gender</label><span id="pop_b_gender"></span></div>
-                <div class="data-row"><label>Birth Date / Time</label><span id="pop_b_dob"></span></div>
-                <div class="data-row"><label>Weight at Delivery</label><span id="pop_b_weight"></span></div>
-                <div class="data-row"><label>Current Station Location</label><span id="pop_b_ward" style="font-weight:bold; color:#00ff96;"></span></div>
-                <div class="data-row"><label>Neonatal Clinical Notes</label><span id="pop_b_notes"></span></div>
+            <div class="ward-nav-card card-normal" onclick="window.location.href='ward_patients.php?ward=Normal'">
+                <i class="fas fa-check-circle"></i>
+                <p class="ward-title-txt">Normal Ward</p>
+                <span class="role-badge doctor"><?php echo $counts['Normal']; ?> Active Babies</span>
+                <button class="nav-view-btn">Open Ward Table →</button>
             </div>
-            <div class="popup-col">
-                <h4 style="color:#ff0080;"><i class="fas fa-female"></i> Mother Maternal Health Profile</h4>
-                <div class="data-row"><label>Mother Full Name</label><span id="pop_m_name"></span></div>
-                <div class="data-row"><label>Clinic Book Reference</label><span id="pop_m_book"></span></div>
-                <div class="data-row"><label>Identity Card (NIC)</label><span id="pop_m_nic"></span></div>
-                <div class="data-row"><label>Phone Contact</label><span id="pop_m_phone"></span></div>
-                <div class="data-row"><label>Blood Specification</label><span id="pop_m_blood"></span></div>
-                <div class="data-row"><label>Obstetric Metrics (G/P)</label>Gravida <span id="pop_m_g"></span>, Para <span id="pop_m_p"></span></div>
-                <div class="data-row"><label>Expected Delivery Window (EDD)</label><span id="pop_m_edd"></span></div>
-                <div class="data-row"><label>High Risk Conditions Checklist</label><span id="pop_m_risk" style="color:#ff4757; font-weight:bold;"></span></div>
+            <div class="ward-nav-card card-critical" onclick="window.location.href='ward_patients.php?ward=Critical'">
+                <i class="fas fa-heartbeat"></i>
+                <p class="ward-title-txt">Critical Ward</p>
+                <span class="role-badge admin" style="background:rgba(255,71,87,0.15); color:#ff4757; border-color:rgba(255,71,87,0.3);"><?php echo $counts['Critical']; ?> Active Babies</span>
+                <button class="nav-view-btn">Open Ward Table →</button>
+            </div>
+            <div class="ward-nav-card card-other" onclick="window.location.href='ward_patients.php?ward=Other'">
+                <i class="fas fa-baby"></i>
+                <p class="ward-title-txt">Other Ward</p>
+                <span class="role-badge nurse"><?php echo $counts['Other']; ?> Active Babies</span>
+                <button class="nav-view-btn">Open Ward Table →</button>
+            </div>
+            <div class="ward-nav-card card-discharge" onclick="window.location.href='ward_patients.php?ward=To Discharge'">
+                <i class="fas fa-door-open"></i>
+                <p class="ward-title-txt">To Discharge</p>
+                <span class="role-badge" style="background:rgba(230,126,34,0.15); color:#e67e22; border:1px solid rgba(230,126,34,0.3);"><?php echo $counts['To Discharge']; ?> Active Babies</span>
+                <button class="nav-view-btn">Open Ward Table →</button>
             </div>
         </div>
     </div>
 </div>
-
-<script>
-function openUnifiedModal(babyId, event) {
-    fetch('get_baby_details.php?baby_id=' + babyId)
-        .then(response => response.json())
-        .then(data => {
-            if (data.error) { alert(data.error); return; }
-            
-            document.getElementById('unifiedModal').style.display = 'flex';
-            // Infant Assignments
-            document.getElementById('pop_b_name').innerText = data.baby_name;
-            document.getElementById('pop_b_gender').innerText = data.baby_gender;
-            document.getElementById('pop_b_dob').innerText = data.birth_date;
-            document.getElementById('pop_b_weight').innerText = data.weight_kg + " kg";
-            document.getElementById('pop_b_ward').innerText = data.ward_name + " Ward";
-            document.getElementById('pop_b_notes').innerText = data.condition_notes || "None documented";
-            
-            // Maternal Profile Mapping
-            document.getElementById('pop_m_name').innerText = data.mother_name;
-            document.getElementById('pop_m_book').innerText = data.clinic_book_no;
-            document.getElementById('pop_m_nic').innerText = data.mother_nic;
-            document.getElementById('pop_m_phone').innerText = data.mother_phone;
-            document.getElementById('pop_m_blood').innerText = data.mother_blood || "Unknown";
-            document.getElementById('pop_m_g').innerText = data.gravida;
-            document.getElementById('pop_m_p').innerText = data.para;
-            document.getElementById('pop_m_edd').innerText = data.edd_date;
-            document.getElementById('pop_m_risk').innerText = data.pregnancy_risk_factors || "None Listed (Low Risk)";
-        });
-}
-
-function closeUnifiedModal() {
-    document.getElementById('unifiedModal').style.display = 'none';
-}
-</script>
 </body>
 </html>
