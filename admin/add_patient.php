@@ -1,57 +1,81 @@
 <?php
 session_start();
-// Include the database connection from the config folder
 require_once '../config/db.php';
 
-// SECURITY CHECK: Admins only
+// SECURITY CHECK
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'Admin') {
     header("Location: ../index.php");
     exit();
 }
 
 $message = "";
+$error = "";
 
-if (isset($_POST['add_patient'])) {
+// Handle checking if mother exists via background AJAX request optimization
+if (isset($_GET['check_nic'])) {
+    header('Content-Type: application/json');
+    $stmt = $pdo->prepare("SELECT * FROM patients WHERE nic = ? LIMIT 1");
+    $stmt->execute([$_GET['check_nic']]);
+    $existing_mother = $stmt->fetch(PDO::FETCH_ASSOC);
+    echo json_encode($existing_mother ? $existing_mother : ['exists' => false]);
+    exit();
+}
+
+// Handle Form Submission
+if (isset($_POST['action_type'])) {
     try {
         $pdo->beginTransaction();
+        
+        $mother_id = !empty($_POST['selected_mother_id']) ? (int)$_POST['selected_mother_id'] : null;
+        $nic = trim($_POST['nic']);
+        
+        // 1. MOTHER PROFILE PERSISTENCE OR CREATION
+        if (!$mother_id) {
+            $check_m = $pdo->prepare("SELECT id FROM patients WHERE nic = ?");
+            $check_m->execute([$nic]);
+            $mother_id = $check_m->fetchColumn();
+            
+            if (!$mother_id) {
+                $ins_m = $pdo->prepare("INSERT INTO patients (full_name, dob, nic, phone, blood_group, patient_type, is_active_inpatient) VALUES (?, ?, ?, ?, ?, 'Pregnant', 1)");
+                $ins_m->execute([$_POST['full_name'], $_POST['dob'], $nic, $_POST['phone'], $_POST['blood_group']]);
+                $mother_id = $pdo->lastInsertId();
+            }
+        } else {
+            $up_m = $pdo->prepare("UPDATE patients SET phone = ?, blood_group = ? WHERE id = ?");
+            $up_m->execute([$_POST['phone'], $_POST['blood_group'], $mother_id]);
+        }
 
-        // Check if patient is adult or minor based on NIC field presence
-        $nic = !empty($_POST['nic']) ? $_POST['nic'] : 'CHILD-' . time(); // Fallback for DB uniqueness if minor
-        $patient_type = 'Pregnant'; // Hardcoded since this system handles only pregnant mothers
-        
-        // SQL query directly mapped to your pm_hospital_management_system patients table
-        $sql = "INSERT INTO patients (full_name, patient_type, dob, clinic_book_no, lmp_date, edd_date, gravida, para, pregnancy_risk_factors, guardian_name, guardian_nic, guardian_relation, gender, nic, phone, address, blood_group, allergies, emergency_contact_name, emergency_phone) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute([
-            $_POST['full_name'],
-            $patient_type,
-            $_POST['dob'],
-            $_POST['clinic_book_no'],
-            $_POST['lmp_date'],
-            $_POST['edd_date'],
-            (int)$_POST['gravida'],
-            (int)$_POST['para'],
-            $_POST['risk_factors'],
-            $_POST['guardian_name'] ?? null, 
-            $_POST['guardian_nic'] ?? null, 
-            $_POST['guardian_relation'] ?? null,
-            'Female', // Force gender value directly to database destination
-            $nic, 
-            $_POST['phone'], 
-            $_POST['address'] ?? null, 
-            $_POST['blood_group'], 
-            $_POST['allergies'], 
-            $_POST['emergency_name'], 
-            $_POST['emergency_phone']
-        ]);
-        
+        // 2. ROUTE ACTIONS: EXISTING CHILD vs NEW PREGNANCY ADMISSION
+        if ($_POST['action_type'] === 'existing_child_treatment') {
+            $baby_id = (int)$_POST['selected_baby_id'];
+            
+            // Re-activate child status inside the nursery grid for treatment sessions
+            $up_b = $pdo->prepare("UPDATE babies SET status = 'Active', ward_name = ?, recommendation_status = 'None' WHERE baby_id = ?");
+            $up_b->execute([$_POST['treatment_ward'], $baby_id]);
+
+            // Register movement log timeline trail row
+            $log = $pdo->prepare("INSERT INTO patient_movement_logs (baby_id, action_type, from_ward, to_ward) VALUES (?, 'Admission', 'Outpatient', ?)");
+            $log->execute([$baby_id, $_POST['treatment_ward']]);
+        } else {
+            // New Pregnancy Admission: Just log maternal parameters without an active baby entry!
+            $ins_adm = $pdo->prepare("INSERT INTO patient_admissions (patient_id, clinic_book_no, lmp_date, edd_date, gravida, para, pregnancy_risk_factors) VALUES (?, ?, ?, ?, ?, ?, ?)");
+            $ins_adm->execute([
+                $mother_id,
+                $_POST['clinic_book_no'],
+                $_POST['lmp_date'],
+                $_POST['edd_date'],
+                $_POST['gravida'],
+                $_POST['para'],
+                $_POST['risk_factors']
+            ]);
+        }
+
         $pdo->commit();
-        $message = "Maternal record created successfully!";
+        header("Location: dashboard.php?tab=patients&msg=Success");
+        exit();
     } catch (Exception $e) {
         $pdo->rollBack();
-        $message = "Error: " . $e->getMessage();
+        $error = "Transaction Aborted: " . $e->getMessage();
     }
 }
 ?>
@@ -60,218 +84,303 @@ if (isset($_POST['add_patient'])) {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Admin - Add Pregnant Mother</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intake & Admission Desk</title>
     <link rel="stylesheet" href="../assets/dashboard.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .full-width { grid-column: span 2; }
-        .input-group { margin-bottom: 15px; }
-        .input-group label { display: block; color: #b0b0b0; font-size: 11px; margin-bottom: 8px; text-transform: uppercase; font-weight: 600; letter-spacing: 1px; }
+        .admission-container { display: flex; justify-content: center; align-items: center; padding: 30px 20px; }
+        .admission-card { background: rgba(30, 30, 45, 0.95); border: 1px solid rgba(255, 255, 255, 0.1); width: 100%; max-width: 800px; padding: 35px; border-radius: 24px; color: white; box-shadow: 0 15px 35px rgba(0,0,0,0.4); position: relative; }
+        .section-header { border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; margin-bottom: 20px; margin-top: 30px; color: #ff0080; font-weight: bold; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .input-row-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 15px; }
+        .input-block { display: flex; flex-direction: column; gap: 5px; text-align: left; position: relative; }
+        .input-block label { color: #aaa; font-size: 12px; font-weight: 600; text-transform: uppercase; }
+        .input-block input, .input-block select { width: 100%; padding: 12px; border-radius: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: white; font-size: 14px; outline: none; }
+        .input-block input:focus, .input-block select:focus { border-color: #00ff96; }
         
-        .input-group input, .input-group select, .input-group textarea {
-            width: 100%; padding: 12px; border-radius: 10px; background: rgba(255,255,255,0.05);
-            border: 1px solid rgba(255,255,255,0.2); color: white; font-size: 14px; transition: 0.3s;
-        }
-        select option { background-color: #1a1a2e; color: white; }
+        .suggestions-dropdown { position: absolute; top: 100%; left: 0; width: 100%; background: #1e1e2d; border: 1px solid rgba(0,255,150,0.4); border-radius: 8px; z-index: 5000; max-height: 250px; overflow-y: auto; display: none; box-shadow: 0 10px 25px rgba(0,0,0,0.5); margin-top: 5px; }
+        .suggestion-item { padding: 12px 15px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: left; }
+        .suggestion-item:hover { background: rgba(0, 255, 150, 0.1); }
+        .suggestion-item strong { color: #00ff96; display: block; font-size: 14px; }
+        .suggestion-item small { color: #aaa; font-size: 11px; }
 
-        input:disabled {
-            background: rgba(255, 255, 255, 0.02);
-            border-color: rgba(255, 255, 255, 0.05);
-            color: rgba(255, 255, 255, 0.2);
-            cursor: not-allowed;
-            filter: blur(1px);
-        }
+        .workflow-options-box { display: none; margin-top: 20px; background: rgba(255,255,255,0.02); border: 1px dashed rgba(255,255,255,0.15); padding: 20px; border-radius: 12px; }
+        .routing-cards-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 25px; }
+        .route-selection-card { background: rgba(255,255,255,0.03); border: 2px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 20px; cursor: pointer; text-align: center; transition: 0.2s; }
+        .route-selection-card:hover { border-color: #00ff96; background: rgba(0,255,150,0.02); }
+        .route-selection-card.selected { border-color: #ff0080; background: rgba(255,0,128,0.04); }
+        .route-selection-card i { font-size: 30px; margin-bottom: 10px; color: #ff0080; }
+        .route-selection-card h4 { margin: 0 0 5px 0; font-size: 15px; color: white; }
+        .route-selection-card p { margin: 0; font-size: 12px; color: #aaa; }
 
-        .form-section { max-width: 850px; background: rgba(30, 30, 40, 0.85); padding: 40px; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.1); margin: auto; box-shadow: 0 15px 35px rgba(0,0,0,0.5); }
-        h2, h4 { color: #ff0080; margin-bottom: 20px; font-weight: 600; }
+        .returning-babies-list { display: none; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+        .baby-select-tile { display: flex; align-items: center; justify-content: space-between; background: rgba(100,200,255,0.05); border: 1px solid rgba(100,200,255,0.2); padding: 12px 20px; border-radius: 8px; cursor: pointer; }
+        .baby-select-tile.chosen { border-color: #00ff96; background: rgba(0,255,150,0.08); }
+        .autofill-indicator { display: none; background: rgba(0, 255, 150, 0.1); border: 1px solid #00ff96; color: #00ff96; padding: 10px; border-radius: 8px; font-size: 13px; font-weight: bold; margin-bottom: 20px; align-items: center; gap: 10px; }
         
-        /* Permanent Container styling for clean dark card alignment */
-        .maternal-container { background: rgba(255, 0, 128, 0.04); border: 1px solid rgba(255, 0, 128, 0.2); padding: 25px; border-radius: 15px; margin: 20px 0; }
-        #guardian_section { display: none; background: rgba(0, 255, 150, 0.03); border: 1px solid rgba(0, 255, 150, 0.1); padding: 25px; border-radius: 15px; margin: 20px 0; animation: slideDown 0.4s ease-out; }
-        
-        @keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        #new_pregnancy_section { display: block; }
     </style>
 </head>
 <body>
+
 <div class="container-main">
     <div class="sidebar">
-        <div class="profile-section">
-            <div class="avatar">🧑‍💼</div>
-            <h3>Pawan</h3>
-            <p>Administrator</p>
-        </div>
+        <div class="profile-section"><div class="avatar">🧑‍💼</div><h3>Pawan</h3><p>Administrator</p></div>
         <div class="nav-menu">
-            <div class="nav-item" onclick="window.location.href='dashboard.php'"><i class="fas fa-users-cog"></i> Staff Management</div>
-            <div class="nav-item active"><i class="fas fa-hospital-user"></i> Patient Records</div>
+            <div class="nav-item" onclick="window.location.href='dashboard.php?tab=dashboard'"><i class="fas fa-home"></i> Admin Dashboard</div>
+            <div class="nav-item" onclick="window.location.href='wards.php'"><i class="fas fa-procedures"></i> Wards</div>
+            <div class="nav-item" onclick="window.location.href='dashboard.php?tab=staff'"><i class="fas fa-users-cog"></i> Staff Management</div>
+            <div class="nav-item active" onclick="window.location.href='dashboard.php?tab=patients'"><i class="fas fa-hospital-user"></i> Patient Records</div>
+            <div class="nav-item" onclick="window.location.href='dashboard.php?tab=reports'"><i class="fas fa-chart-pie"></i> Reports</div>
         </div>
         <div class="logout-section"><a href="../logout.php" class="logout-btn">Logout</a></div>
     </div>
 
     <div class="main-content">
-        <?php if ($message): ?>
-            <div style="padding:15px; background:rgba(0,255,150,0.1); color:#00ff96; border-radius:10px; margin-bottom:20px; border: 1px solid #00ff96;">
-                <?php echo $message; ?>
-            </div>
-        <?php endif; ?>
+        <div class="admission-container">
+            <div class="admission-card">
+                <h2 style="color:#00ff96; margin:0 0 5px 0;"><i class="fas fa-hospital-user"></i> Patient Intake Enrollment Desk</h2>
+                <p style="color:#aaa; font-size:13px; margin-bottom:25px;">Type identity details to cross-match entries or process fresh clinical additions.</p>
 
-        <div class="form-section">
-            <h2 style="color: #ff0080;"><i class="fas fa-baby"></i> Register Pregnant Mother</h2>
+                <?php if(!empty($error)): ?><div style="padding:12px; background:rgba(255,71,87,0.1); color:#ff4757; border:1px solid #ff4757; border-radius:8px; margin-bottom:20px; font-size:13px; font-weight:bold;"><?php echo $error; ?></div><?php endif; ?>
 
-            <form method="POST" id="patientForm">
-                <div class="form-grid">
-                    <div class="input-group">
-                        <label>Full Name</label>
-                        <input type="text" name="full_name" placeholder="Enter mother's name" required>
-                    </div>
-                    <div class="input-group">
-                        <label>Date of Birth</label>
-                        <input type="date" name="dob" id="dob_input" required onchange="checkAge()">
-                    </div>
+                <div id="autofill_badge" class="autofill-indicator">
+                    <i class="fas fa-id-card-alt"></i> <span>Returning Mother Profile Verified! Core profile parameters imported.</span>
+                    <button type="button" onclick="resetFormFields()" style="background:transparent; border:none; color:#ff4757; margin-left:auto; font-weight:bold; cursor:pointer;">Clear</button>
                 </div>
 
-                <div class="maternal-container">
-                    <h4><i class="fas fa-heartbeat"></i> Maternal Clinical Records</h4>
-                    <div class="form-grid">
-                        <div class="input-group">
-                            <label>Clinic Book Number</label>
-                            <input type="text" name="clinic_book_no" placeholder="e.g., MOH/MAL/2026/115" required>
-                        </div>
-                        <div class="input-group">
-                            <label>Last Menstrual Period (LMP)</label>
-                            <input type="date" name="lmp_date" id="lmp_date" onchange="calculateEDD()" required>
-                        </div>
-                        <div class="input-group">
-                            <label>Expected Date of Delivery (EDD)</label>
-                            <input type="date" name="edd_date" id="edd_date" required>
-                        </div>
-                        <div class="input-group">
-                            <label>Gravida (Total Pregnancies)</label>
-                            <input type="number" name="gravida" min="1" value="1" required>
-                        </div>
-                        <div class="input-group">
-                            <label>Para (Viable Births)</label>
-                            <input type="number" name="para" min="0" value="0" required>
-                        </div>
-                        <div class="input-group">
-                            <label>Risk Factors / Conditions</label>
-                            <input type="text" name="risk_factors" placeholder="e.g., None, Gestational Diabetes">
-                        </div>
-                    </div>
-                </div>
+                <form method="POST" id="mainIntakeForm">
+                    <input type="hidden" name="selected_mother_id" id="hidden_mother_id">
+                    <input type="hidden" name="selected_baby_id" id="hidden_baby_id">
+                    <input type="hidden" name="action_type" id="hidden_action_type" value="new_delivery">
 
-                <div id="guardian_section">
-                    <h4 style="color: #00ff96;"><i class="fas fa-user-shield"></i> Guardian Details (Required for Minor)</h4>
-                    <div class="form-grid">
-                        <div class="input-group">
-                            <label>Guardian Name</label>
-                            <input type="text" name="guardian_name" id="g_name">
+                    <div class="section-header" style="margin-top:0;">📋 STEP 1: MATERNAL DEMOGRAPHICS INDEX</div>
+                    <div class="input-row-grid">
+                        <div class="input-block">
+                            <label>National Identity Card (NIC Number)</label>
+                            <input type="text" name="nic" id="field_nic" placeholder="Type NIC profile lookup target..." required autocomplete="off" oninput="fetchMaternalSuggestions(this.value)">
+                            <div id="suggestions_box" class="suggestions-dropdown"></div>
                         </div>
-                        <div class="input-group">
-                            <label>Guardian NIC (Unique ID)</label>
-                            <input type="text" name="guardian_nic" id="g_nic">
-                        </div>
-                        <div class="input-group full-width">
-                            <label>Relationship to Teen</label>
-                            <input type="text" name="guardian_relation" placeholder="e.g. Mother, Father">
+                        <div class="input-block">
+                            <label>Mother Full Name</label>
+                            <input type="text" name="full_name" id="field_name" placeholder="Full legal name entry" required>
                         </div>
                     </div>
-                </div>
-
-                <div class="form-grid">
-                    <div class="input-group">
-                        <label id="nic_label">NIC / ID Number</label>
-                        <input type="text" name="nic" id="nic_input" placeholder="Patient NIC" required>
+                    <div class="input-row-grid">
+                        <div class="input-block">
+                            <label>Date of Birth</label>
+                            <input type="date" name="dob" id="field_dob" required>
+                        </div>
+                        <div class="input-block">
+                            <label>Phone Number Contact</label>
+                            <input type="text" name="phone" id="field_phone" placeholder="Contact link input" required>
+                        </div>
                     </div>
-                    <div class="input-group">
-                        <label>Phone Number</label>
-                        <input type="text" name="phone" required>
-                    </div>
-                    <div class="input-group full-width">
-                        <label>Blood Group</label>
-                        <select name="blood_group">
+                    <div class="input-block" style="margin-bottom: 20px;">
+                        <label>Blood Group Specification</label>
+                        <select name="blood_group" id="field_blood">
                             <option value="Unknown">Unknown</option>
                             <option value="A+">A+</option><option value="A-">A-</option>
                             <option value="B+">B+</option><option value="B-">B-</option>
-                            <option value="O+">O+</option><option value="O-">O-</option>
                             <option value="AB+">AB+</option><option value="AB-">AB-</option>
+                            <option value="O+">O+</option><option value="O-">O-</option>
                         </select>
                     </div>
-                    <div class="input-group full-width">
-                        <label>Medical Allergies</label>
-                        <textarea name="allergies" placeholder="List any known allergies..."></textarea>
-                    </div>
-                    
-                    <div class="full-width"><h4 style="color: #00ff96;"><i class="fas fa-phone-alt"></i> Emergency Contact</h4></div>
-                    <div class="input-group">
-                        <label>Contact Name</label>
-                        <input type="text" name="emergency_name" required>
-                    </div>
-                    <div class="input-group">
-                        <label>Emergency Phone</label>
-                        <input type="text" name="emergency_phone" required>
-                    </div>
-                </div>
 
-                <button type="submit" name="add_patient" class="btn" style="margin-top: 20px; width: 100%; background: #ff0080; color: white; border: none;">✓ REGISTER PREGNANT MOTHER</button>
-            </form>
-            <a href="dashboard.php" style="color:#ff0080; text-decoration:none; display:block; margin-top:20px; text-align: center;">← Back to Dashboard</a>
+                    <div id="returning_mother_workflow" class="workflow-options-box">
+                        <h4 style="color:#00ff96; margin:0 0 15px 0; text-align:left;"><i class="fas fa-exchange-alt"></i> Patient Match Identified: Select Operational Pathway</h4>
+                        <div class="routing-cards-grid">
+                            <div class="route-selection-card selected" id="card_route_new" onclick="setWorkflowRoute('new_delivery')">
+                                <i class="fas fa-baby-carriage"></i>
+                                <h4>New Pregnancy Admission</h4>
+                                <p>Register a subsequent newborn delivery case under this profile loop.</p>
+                            </div>
+                            <div class="route-selection-card" id="card_route_return" onclick="setWorkflowRoute('existing_child')">
+                                <i class="fas fa-prescription-bottle-alt"></i>
+                                <h4>Returning Child Treatment</h4>
+                                <p>Process follow-up clinic checkups for an existing infant record.</p>
+                            </div>
+                        </div>
+
+                        <div id="returning_babies_area" class="returning-babies-list">
+                            <label style="color:#aaa; font-size:12px; font-weight:600; display:block; text-align:left; margin-bottom:5px;">Select Target Child Patient Profile</label>
+                            <div id="babies_tiles_render_box"></div>
+                            
+                            <div class="input-block" style="margin-top:15px;">
+                                <label>Assign Treatment Admission Destination Ward</label>
+                                <select name="treatment_ward" id="field_treatment_ward">
+                                    <option value="Normal">Normal Ward</option>
+                                    <option value="Critical">Critical Ward</option>
+                                    <option value="Other">Other Ward</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="new_pregnancy_section">
+                        <div class="section-header">📑 STEP 2: CLINICAL METRICS ADMISSION ROSTER</div>
+                        <div class="input-row-grid">
+                            <div class="input-block"><label>Clinic Book Reference Number</label><input type="text" name="clinic_book_no" id="f_book" placeholder="e.g., MOH/MAL/2026/115"></div>
+                            <div class="input-block"><label>Last Menstrual Period (LMP)</label><input type="date" name="lmp_date" id="f_lmp"></div>
+                        </div>
+                        <div class="input-row-grid">
+                            <div class="input-block"><label>Expected Delivery Window (EDD)</label><input type="date" name="edd_date" id="f_edd" readonly style="opacity:0.7; background:rgba(255,255,255,0.02);"></div>
+                            <div class="input-block"><label>Gravida (Total Pregnancies)</label><input type="number" name="gravida" id="f_g" min="1" value="1"></div>
+                        </div>
+                        <div class="input-row-grid">
+                            <div class="input-block"><label>Para (Viable Births History)</label><input type="number" name="para" id="f_p" min="0" value="0"></div>
+                            <div class="input-block"><label>High Risk Conditions checklist notes</label><input type="text" name="risk_factors" id="f_risk" placeholder="e.g., Gestational Diabetes, None"></div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn" style="width:100%; margin-top:30px; background:#00ff96; color:#1a1a2e; font-weight:bold; height:50px; font-size:15px; border:none; border-radius:8px; cursor:pointer; text-transform:uppercase; letter-spacing:0.5px;">
+                        <i class="fas fa-check-circle"></i> Commit Admission Registry Process
+                    </button>
+                </form>
+            </div>
         </div>
     </div>
 </div>
 
 <script>
-function calculateEDD() {
-    const lmpValue = document.getElementById('lmp_date').value;
-    if (!lmpValue) return;
+let associatedBabiesArray = [];
 
-    let lmpDate = new Date(lmpValue);
-    lmpDate.setDate(lmpDate.getDate() + 7);
-    lmpDate.setMonth(lmpDate.getMonth() + 9);
+// Automatic EDD calculation from LMP based on Naegele's Rule (LMP + 280 days)
+document.addEventListener('DOMContentLoaded', function() {
+    const lmpInput = document.getElementById('f_lmp');
+    const eddInput = document.getElementById('f_edd');
 
-    const year = lmpDate.getFullYear();
-    const month = String(lmpDate.getMonth() + 1).padStart(2, '0');
-    const day = String(lmpDate.getDate()).padStart(2, '0');
+    if (lmpInput && eddInput) {
+        lmpInput.addEventListener('change', function() {
+            const lmpValue = this.value;
+            if (!lmpValue) return;
 
-    document.getElementById('edd_date').value = `${year}-${month}-${day}`;
+            const lmpDate = new Date(lmpValue);
+            lmpDate.setDate(lmpDate.getDate() + 280);
+
+            const year = lmpDate.getFullYear();
+            const month = String(lmpDate.getMonth() + 1).padStart(2, '0');
+            const day = String(lmpDate.getDate()).padStart(2, '0');
+
+            eddInput.value = `${year}-${month}-${day}`;
+        });
+    }
+});
+
+function fetchMaternalSuggestions(val) {
+    const box = document.getElementById('suggestions_box');
+    if (val.trim().length < 2) { box.style.display = 'none'; return; }
+
+    fetch('search_mother.php?q=' + encodeURIComponent(val))
+        .then(response => response.json())
+        .then(data => {
+            if (data && data.length > 0) {
+                box.innerHTML = "";
+                box.style.display = 'block';
+                data.forEach(mother => {
+                    let div = document.createElement('div');
+                    div.className = "suggestion-item";
+                    div.innerHTML = `<strong>${mother.full_name}</strong><small>NIC: ${mother.nic} | Phone: ${mother.phone}</small>`;
+                    div.onclick = function() { selectMotherProfile(mother); };
+                    box.appendChild(div);
+                });
+            } else { box.style.display = 'none'; }
+        });
 }
 
-function checkAge() {
-    const dobValue = document.getElementById('dob_input').value;
-    if (!dobValue) return;
+function selectMotherProfile(m) {
+    document.getElementById('suggestions_box').style.display = 'none';
+    
+    document.getElementById('hidden_mother_id').value = m.id;
+    document.getElementById('field_nic').value = m.nic;
+    document.getElementById('field_name').value = m.full_name;
+    document.getElementById('field_name').readOnly = true;
+    document.getElementById('field_name').style.opacity = '0.6';
+    
+    document.getElementById('field_dob').value = m.dob;
+    document.getElementById('field_dob').readOnly = true;
+    document.getElementById('field_dob').style.opacity = '0.6';
+    
+    document.getElementById('field_phone').value = m.phone;
+    document.getElementById('field_blood').value = m.blood_group;
 
-    const dob = new Date(dobValue);
-    const today = new Date();
-    let age = today.getFullYear() - dob.getFullYear();
-    const monthDiff = today.getMonth() - dob.getMonth();
+    associatedBabiesArray = m.babies || [];
+    
+    document.getElementById('returning_mother_workflow').style.display = 'block';
+    document.getElementById('autofill_badge').style.display = 'flex';
+    setWorkflowRoute('new_delivery');
+}
 
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
-        age--;
-    }
+function setWorkflowRoute(type) {
+    document.getElementById('hidden_action_type').value = (type === 'new_delivery') ? 'new_delivery' : 'existing_child_treatment';
+    
+    document.getElementById('card_route_new').classList.remove('selected');
+    document.getElementById('card_route_return').classList.remove('selected');
 
-    const guardianSection = document.getElementById('guardian_section');
-    const nicInput = document.getElementById('nic_input');
-    const gName = document.getElementById('g_name');
-    const gNic = document.getElementById('g_nic');
+    const formPregnancySection = document.getElementById('new_pregnancy_section');
+    const returnBabiesSection = document.getElementById('returning_babies_area');
 
-    if (age < 18) {
-        guardianSection.style.display = 'block';
-        nicInput.disabled = true;
-        nicInput.placeholder = "Not required for minors";
-        nicInput.value = "";
-        nicInput.required = false;
-
-        gName.required = true;
-        gNic.required = true;
+    if(type === 'new_delivery') {
+        document.getElementById('card_route_new').classList.add('selected');
+        formPregnancySection.style.display = 'block';
+        returnBabiesSection.style.display = 'none';
+        toggleRequiredFields(true);
     } else {
-        guardianSection.style.display = 'none';
-        nicInput.disabled = false;
-        nicInput.placeholder = "Enter Patient NIC";
-        nicInput.required = true;
-
-        gName.required = false;
-        gNic.required = false;
+        document.getElementById('card_route_return').classList.add('selected');
+        formPregnancySection.style.display = 'none';
+        returnBabiesSection.style.display = 'flex';
+        toggleRequiredFields(false);
+        renderBabiesSelectionTiles();
     }
+}
+
+function toggleRequiredFields(shouldRequire) {
+    const fields = ['f_book', 'f_lmp'];
+    fields.forEach(id => {
+        const field = document.getElementById(id);
+        if(field) field.required = shouldRequire;
+    });
+}
+
+function renderBabiesSelectionTiles() {
+    const box = document.getElementById('babies_tiles_render_box');
+    box.innerHTML = "";
+    
+    if(associatedBabiesArray.length === 0) {
+        box.innerHTML = "<div style='color:#ffa502; font-size:13px; font-style:italic; padding:10px;'>No previous child records found under this patient file profile template.</div>";
+        return;
+    }
+
+    associatedBabiesArray.forEach(baby => {
+        let tile = document.createElement('div');
+        tile.className = "baby-select-tile";
+        tile.id = "baby_tile_" + baby.baby_id;
+        tile.innerHTML = `
+            <div>
+                <strong>${baby.baby_name}</strong><br>
+                <small style='color:#aaa;'>Gender: ${baby.baby_gender} | Born: ${baby.birth_date}</small>
+            </div>
+            <span class="role-badge nurse" style="font-size:10px;">Status: ${baby.status}</span>
+        `;
+        tile.onclick = function() { chooseBabyForTreatment(baby.baby_id); };
+        box.appendChild(tile);
+    });
+}
+
+function chooseBabyForTreatment(id) {
+    document.getElementById('hidden_baby_id').value = id;
+    document.querySelectorAll('.baby-select-tile').forEach(t => t.classList.remove('chosen'));
+    document.getElementById('baby_tile_' + id).classList.add('chosen');
+}
+
+function resetFormFields() {
+    document.getElementById('mainIntakeForm').reset();
+    document.getElementById('field_name').readOnly = false;
+    document.getElementById('field_name').style.opacity = '1';
+    document.getElementById('field_dob').readOnly = false;
+    document.getElementById('field_dob').style.opacity = '1';
+    document.getElementById('returning_mother_workflow').style.display = 'none';
+    document.getElementById('autofill_badge').style.display = 'none';
 }
 </script>
 </body>
