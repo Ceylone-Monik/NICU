@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: May 08, 2026 at 06:28 AM
+-- Generation Time: May 23, 2026 at 09:49 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.0.30
 
@@ -18,8 +18,39 @@ SET time_zone = "+00:00";
 /*!40101 SET NAMES utf8mb4 */;
 
 --
--- Database: `hospital_db`
+-- Database: `pm_hospital_management_system`
 --
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `babies`
+--
+
+CREATE TABLE `babies` (
+  `baby_id` int(11) NOT NULL,
+  `mother_id` int(11) NOT NULL,
+  `admission_bed_number` varchar(50) DEFAULT NULL,
+  `baby_name` varchar(100) DEFAULT 'Baby of Pink Card Holder',
+  `baby_gender` enum('Male','Female','Other') NOT NULL,
+  `birth_date` datetime NOT NULL,
+  `weight_kg` decimal(4,3) DEFAULT NULL,
+  `condition_notes` text DEFAULT NULL,
+  `ward_name` enum('Normal','Critical','Other','To Discharge') NOT NULL DEFAULT 'Normal',
+  `recommended_ward` enum('Normal','Critical','Other','To Discharge') DEFAULT NULL,
+  `recommendation_status` enum('None','Pending') DEFAULT 'None',
+  `status` enum('Active','Discharged') DEFAULT 'Active',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `babies`
+--
+
+INSERT INTO `babies` (`baby_id`, `mother_id`, `admission_bed_number`, `baby_name`, `baby_gender`, `birth_date`, `weight_kg`, `condition_notes`, `ward_name`, `recommended_ward`, `recommendation_status`, `status`, `created_at`) VALUES
+(1, 10, NULL, '', 'Male', '2026-05-21 11:43:00', 2.000, 'good', 'To Discharge', NULL, 'None', 'Active', '2026-05-22 06:14:06'),
+(4, 12, NULL, 'baby3', 'Male', '2026-05-12 16:29:00', 3.000, 'good', 'Other', NULL, 'None', 'Active', '2026-05-22 11:00:06'),
+(5, 13, NULL, 'Baby of Fourth', 'Male', '0000-00-00 00:00:00', 0.000, '', 'Normal', NULL, 'None', 'Active', '2026-05-23 04:25:46');
 
 -- --------------------------------------------------------
 
@@ -56,7 +87,8 @@ INSERT INTO `doctor_details` (`id`, `user_id`, `specialization`, `license_no`) V
 
 CREATE TABLE `medical_reports` (
   `report_id` int(11) NOT NULL,
-  `patient_id` int(11) NOT NULL,
+  `patient_id` int(11) DEFAULT NULL,
+  `baby_id` int(11) DEFAULT NULL,
   `doctor_id` int(11) NOT NULL,
   `symptoms` text DEFAULT NULL,
   `diagnosis` text DEFAULT NULL,
@@ -70,9 +102,9 @@ CREATE TABLE `medical_reports` (
 -- Dumping data for table `medical_reports`
 --
 
-INSERT INTO `medical_reports` (`report_id`, `patient_id`, `doctor_id`, `symptoms`, `diagnosis`, `vitals`, `prescription`, `remarks`, `created_at`) VALUES
-(1, 3, 4, 'good', 'fever ', 'hu8', 'penadol', 'nap', '2026-04-24 06:19:37'),
-(2, 3, 4, 'good', 'fever', '11', 'penadeen', 'mii', '2026-04-24 06:48:05');
+INSERT INTO `medical_reports` (`report_id`, `patient_id`, `baby_id`, `doctor_id`, `symptoms`, `diagnosis`, `vitals`, `prescription`, `remarks`, `created_at`) VALUES
+(3, NULL, 1, 4, 'bad', 'jjjjj', 'birth weught', 'jkkkkk', 'lllll', '2026-05-22 07:45:28'),
+(4, NULL, 1, 4, 'bad', 'jnjinjji', 'birth weught', 'hini', ' uuu', '2026-05-22 07:46:00');
 
 -- --------------------------------------------------------
 
@@ -110,7 +142,15 @@ INSERT INTO `nurse_details` (`id`, `user_id`, `department`, `shift`) VALUES
 CREATE TABLE `patients` (
   `id` int(11) NOT NULL,
   `full_name` varchar(100) NOT NULL,
+  `patient_type` enum('Normal','Pregnant') NOT NULL DEFAULT 'Normal',
+  `ward_name` enum('Normal','Critical','Other','To Discharge') NOT NULL DEFAULT 'Normal',
   `dob` date NOT NULL,
+  `clinic_book_no` varchar(50) DEFAULT NULL,
+  `lmp_date` date DEFAULT NULL,
+  `edd_date` date DEFAULT NULL,
+  `gravida` int(11) DEFAULT NULL,
+  `para` int(11) DEFAULT NULL,
+  `pregnancy_risk_factors` text DEFAULT NULL,
   `gender` enum('Male','Female','Other') NOT NULL,
   `nic` varchar(20) NOT NULL,
   `guardian_name` varchar(100) DEFAULT NULL,
@@ -122,21 +162,82 @@ CREATE TABLE `patients` (
   `allergies` text DEFAULT NULL,
   `emergency_contact_name` varchar(100) DEFAULT NULL,
   `emergency_phone` varchar(20) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `is_active_inpatient` tinyint(1) DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `patients`
 --
 
-INSERT INTO `patients` (`id`, `full_name`, `dob`, `gender`, `nic`, `guardian_name`, `guardian_nic`, `guardian_relation`, `phone`, `address`, `blood_group`, `allergies`, `emergency_contact_name`, `emergency_phone`, `created_at`) VALUES
-(1, 'Pawan Nimsara', '2019-06-12', 'Male', 'CHILD-1777005906', 'M B P N Dharmasena', '200228602990', 'Father', '0778253387', NULL, 'B+', 'yyyy', 'pawan', '0778253387', '2026-04-24 04:45:06'),
-(2, 'Pawan Nimsara', '2002-02-12', 'Male', '200228602990', '', '', '', '0778253387', NULL, 'B+', 'hhhh', 'pawan', '0778253387', '2026-04-24 04:47:37'),
-(3, 'Pawan Nimsara2', '2012-06-12', 'Male', 'CHILD-1777006145', 'M B P N Dharmasena', '200228602990', 'Father', '0778253387', NULL, 'B+', 'll,', 'pawan', '0778253387', '2026-04-24 04:49:05'),
-(4, 'Pawan Nimsara', '2026-04-16', 'Male', 'CHILD-1777015679', 'M B P N Dharmasena', '200228602990', 'Father', '0778253387', NULL, 'B-', 'bug', 'pawan', '0778253387', '2026-04-24 07:27:59'),
-(5, 'Pawan Nimsara', '2017-07-18', 'Male', 'CHILD-1777025094', 'M B P N Dharmasena', '200228602990', 'Father', '0778253387', NULL, 'O-', 'bncjh', 'pawan', '0778253387', '2026-04-24 10:04:54'),
-(6, 'Pawan Nimsara', '2026-05-01', 'Male', 'CHILD-1777867705', 'M B P N Dharmasena', '200228602991', 'Father', '0778253388', NULL, 'B+', 'tuutud', 'pawan', '0778253387', '2026-05-04 04:08:25'),
-(8, 'Pawan Nimsara12', '2002-08-08', 'Male', '2002286029988', '', '', '', '0778253388', NULL, 'B-', 'hvv', 'pawan', '0778253387', '2026-05-04 04:09:25');
+INSERT INTO `patients` (`id`, `full_name`, `patient_type`, `ward_name`, `dob`, `clinic_book_no`, `lmp_date`, `edd_date`, `gravida`, `para`, `pregnancy_risk_factors`, `gender`, `nic`, `guardian_name`, `guardian_nic`, `guardian_relation`, `phone`, `address`, `blood_group`, `allergies`, `emergency_contact_name`, `emergency_phone`, `created_at`, `is_active_inpatient`) VALUES
+(10, 'first', 'Pregnant', 'Normal', '1997-07-07', 'BAD/2026/001', '2026-05-01', '2027-02-08', 1, 0, 'none', 'Female', '200228602995', '', '', '', '0778253387', NULL, 'B+', 'pppppppppp', 'rrrrrrrrrrrrrrrrrrrrrr', '0778253389', '2026-05-22 05:21:54', 1),
+(11, 'second', 'Pregnant', 'Normal', '1997-07-07', 'BAD/2026/001', '2026-05-01', '2027-02-08', 1, 0, 'none', 'Female', '200228602999', '', '', '', '0778253389', NULL, 'B+', 'ssssssss', 'rrrrrrrrrrrrrrrrrrrrrrssss', '0778253385', '2026-05-22 07:04:54', 1),
+(12, 'Third', 'Pregnant', 'Normal', '2002-05-12', 'BAD/2026/003', '2026-04-29', '2027-02-06', 1, 0, 'none', 'Female', '200228602100', '', '', '', '0778253100', NULL, 'O+', 'nkjnkkkj', 'rrrrrrrrrrrrrrkkkk', '0778253100', '2026-05-22 10:24:18', 1),
+(13, 'Fourth', 'Pregnant', 'Normal', '2000-06-07', NULL, NULL, NULL, NULL, NULL, NULL, 'Male', '200120020202', NULL, NULL, NULL, '0778255666', NULL, NULL, NULL, NULL, NULL, '2026-05-23 04:25:46', 1);
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `patient_admissions`
+--
+
+CREATE TABLE `patient_admissions` (
+  `admission_id` int(11) NOT NULL,
+  `patient_id` int(11) NOT NULL,
+  `clinic_book_no` varchar(100) DEFAULT NULL,
+  `lmp_date` date DEFAULT NULL,
+  `edd_date` date DEFAULT NULL,
+  `gravida` int(11) DEFAULT 1,
+  `para` int(11) DEFAULT 0,
+  `pregnancy_risk_factors` text DEFAULT NULL,
+  `admitted_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `patient_admissions`
+--
+
+INSERT INTO `patient_admissions` (`admission_id`, `patient_id`, `clinic_book_no`, `lmp_date`, `edd_date`, `gravida`, `para`, `pregnancy_risk_factors`, `admitted_at`) VALUES
+(1, 13, 'BAD/2026/004', '2026-05-01', '2027-02-05', 1, 0, 'none', '2026-05-23 04:25:46'),
+(2, 13, 'BAD/2026/005', '2026-05-02', '2027-02-06', 1, 0, 'none', '2026-05-23 06:43:23');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `patient_movement_logs`
+--
+
+CREATE TABLE `patient_movement_logs` (
+  `log_id` int(11) NOT NULL,
+  `baby_id` int(11) NOT NULL,
+  `action_type` enum('Admission','Transfer','Discharge') NOT NULL,
+  `from_ward` varchar(50) DEFAULT 'None',
+  `to_ward` varchar(50) NOT NULL,
+  `entered_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `left_at` timestamp NULL DEFAULT NULL,
+  `duration_days` decimal(5,2) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `patient_movement_logs`
+--
+
+INSERT INTO `patient_movement_logs` (`log_id`, `baby_id`, `action_type`, `from_ward`, `to_ward`, `entered_at`, `left_at`, `duration_days`) VALUES
+(8, 1, 'Transfer', 'Critical', 'To Discharge', '2026-05-22 10:47:57', NULL, NULL),
+(11, 4, 'Admission', 'None', 'Normal', '2026-05-22 11:00:06', '2026-05-22 11:00:11', 0.00),
+(12, 4, 'Transfer', 'Normal', 'Critical', '2026-05-22 11:00:11', '2026-05-22 11:00:21', 0.00),
+(13, 4, 'Transfer', 'Critical', 'Other', '2026-05-22 11:00:21', '2026-05-22 11:00:34', 0.00),
+(14, 4, 'Transfer', 'Other', 'To Discharge', '2026-05-22 11:00:34', '2026-05-22 11:01:04', 0.00),
+(15, 4, 'Discharge', 'To Discharge', 'Discharged Home', '2026-05-22 11:01:04', '2026-05-23 04:15:51', 0.72),
+(16, 4, 'Admission', 'Outpatient', 'Critical', '2026-05-23 04:15:41', '2026-05-23 04:15:51', 0.00),
+(17, 4, 'Transfer', 'Critical', 'Normal', '2026-05-23 04:15:51', '2026-05-23 04:16:02', 0.00),
+(18, 4, 'Transfer', 'Normal', 'Other', '2026-05-23 04:16:02', '2026-05-23 04:16:09', 0.00),
+(19, 4, 'Transfer', 'Other', 'To Discharge', '2026-05-23 04:16:09', '2026-05-23 04:16:16', 0.00),
+(20, 4, 'Discharge', 'To Discharge', 'Discharged Home', '2026-05-23 04:16:16', '2026-05-23 06:42:40', 0.10),
+(21, 5, 'Admission', 'None', 'Normal', '2026-05-23 04:25:46', NULL, NULL),
+(22, 4, 'Admission', 'Outpatient', 'Critical', '2026-05-23 04:37:03', '2026-05-23 06:42:40', 0.09),
+(28, 4, 'Transfer', 'Critical', 'Other', '2026-05-23 06:42:40', NULL, NULL);
 
 -- --------------------------------------------------------
 
@@ -181,6 +282,14 @@ INSERT INTO `users` (`id`, `full_name`, `email`, `password`, `role`, `created_at
 --
 
 --
+-- Indexes for table `babies`
+--
+ALTER TABLE `babies`
+  ADD PRIMARY KEY (`baby_id`),
+  ADD KEY `mother_id` (`mother_id`),
+  ADD KEY `admission_bed_number` (`admission_bed_number`);
+
+--
 -- Indexes for table `doctor_details`
 --
 ALTER TABLE `doctor_details`
@@ -194,7 +303,8 @@ ALTER TABLE `doctor_details`
 ALTER TABLE `medical_reports`
   ADD PRIMARY KEY (`report_id`),
   ADD KEY `patient_id` (`patient_id`),
-  ADD KEY `doctor_id` (`doctor_id`);
+  ADD KEY `doctor_id` (`doctor_id`),
+  ADD KEY `baby_id` (`baby_id`);
 
 --
 -- Indexes for table `nurse_details`
@@ -211,6 +321,20 @@ ALTER TABLE `patients`
   ADD UNIQUE KEY `nic` (`nic`);
 
 --
+-- Indexes for table `patient_admissions`
+--
+ALTER TABLE `patient_admissions`
+  ADD PRIMARY KEY (`admission_id`),
+  ADD KEY `patient_id` (`patient_id`);
+
+--
+-- Indexes for table `patient_movement_logs`
+--
+ALTER TABLE `patient_movement_logs`
+  ADD PRIMARY KEY (`log_id`),
+  ADD KEY `baby_id` (`baby_id`);
+
+--
 -- Indexes for table `users`
 --
 ALTER TABLE `users`
@@ -222,6 +346,12 @@ ALTER TABLE `users`
 --
 
 --
+-- AUTO_INCREMENT for table `babies`
+--
+ALTER TABLE `babies`
+  MODIFY `baby_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+
+--
 -- AUTO_INCREMENT for table `doctor_details`
 --
 ALTER TABLE `doctor_details`
@@ -231,7 +361,7 @@ ALTER TABLE `doctor_details`
 -- AUTO_INCREMENT for table `medical_reports`
 --
 ALTER TABLE `medical_reports`
-  MODIFY `report_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `report_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `nurse_details`
@@ -243,7 +373,19 @@ ALTER TABLE `nurse_details`
 -- AUTO_INCREMENT for table `patients`
 --
 ALTER TABLE `patients`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=14;
+
+--
+-- AUTO_INCREMENT for table `patient_admissions`
+--
+ALTER TABLE `patient_admissions`
+  MODIFY `admission_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+
+--
+-- AUTO_INCREMENT for table `patient_movement_logs`
+--
+ALTER TABLE `patient_movement_logs`
+  MODIFY `log_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=29;
 
 --
 -- AUTO_INCREMENT for table `users`
@@ -256,6 +398,12 @@ ALTER TABLE `users`
 --
 
 --
+-- Constraints for table `babies`
+--
+ALTER TABLE `babies`
+  ADD CONSTRAINT `babies_ibfk_1` FOREIGN KEY (`mother_id`) REFERENCES `patients` (`id`) ON DELETE CASCADE;
+
+--
 -- Constraints for table `doctor_details`
 --
 ALTER TABLE `doctor_details`
@@ -266,13 +414,26 @@ ALTER TABLE `doctor_details`
 --
 ALTER TABLE `medical_reports`
   ADD CONSTRAINT `medical_reports_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`) ON DELETE CASCADE,
-  ADD CONSTRAINT `medical_reports_ibfk_2` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+  ADD CONSTRAINT `medical_reports_ibfk_2` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `medical_reports_ibfk_3` FOREIGN KEY (`baby_id`) REFERENCES `babies` (`baby_id`) ON DELETE CASCADE;
 
 --
 -- Constraints for table `nurse_details`
 --
 ALTER TABLE `nurse_details`
   ADD CONSTRAINT `nurse_details_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `patient_admissions`
+--
+ALTER TABLE `patient_admissions`
+  ADD CONSTRAINT `patient_admissions_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `patient_movement_logs`
+--
+ALTER TABLE `patient_movement_logs`
+  ADD CONSTRAINT `patient_movement_logs_ibfk_1` FOREIGN KEY (`baby_id`) REFERENCES `babies` (`baby_id`) ON DELETE CASCADE;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
