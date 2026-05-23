@@ -10,15 +10,22 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'Admin') {
 
 $alert_message = "";
 
-// 1. HANDLE NEW BABY REGISTRATION WITH TIME JOURNEY LOGS
+// 1. HANDLE NEW BABY REGISTRATION WITH TIME JOURNEY LOGS & BED NUMBER LINKING
 if (isset($_POST['register_baby'])) {
     try {
         $pdo->beginTransaction();
+        $mother_id = $_POST['mother_id'];
 
-        // A. Insert the baby record into the babies data table
-        $stmt = $pdo->prepare("INSERT INTO babies (mother_id, baby_name, baby_gender, birth_date, weight_kg, condition_notes, ward_name) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        // Extract the mother's most recent active inpatient stay bed number entry session cleanly
+        $bed_stmt = $pdo->prepare("SELECT bed_number FROM patient_admissions WHERE patient_id = ? ORDER BY admitted_at DESC LIMIT 1");
+        $bed_stmt->execute([$mother_id]);
+        $active_stay_bed_id = $bed_stmt->fetchColumn() ?: null;
+
+        // A. Insert the baby record into the babies data table linked to the unique Admission Bed Key
+        $stmt = $pdo->prepare("INSERT INTO babies (mother_id, admission_bed_number, baby_name, baby_gender, birth_date, weight_kg, condition_notes, ward_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
         $stmt->execute([
-            $_POST['mother_id'],
+            $mother_id,
+            $active_stay_bed_id,
             !empty($_POST['baby_name']) ? $_POST['baby_name'] : 'Baby of Pink Card Holder',
             $_POST['baby_gender'],
             $_POST['birth_date'],
@@ -168,7 +175,7 @@ $counts = [
             <div style="padding:15px; background:rgba(255,71,87,0.1); color:#ff4757; border-radius:10px; margin-bottom:20px; border: 1px solid #ff4757;"><?php echo $alert_message; ?></div>
         <?php endif; ?>
         <?php if (isset($_GET['msg']) && $_GET['msg'] === 'BabyRegistered'): ?>
-            <div style="padding:15px; background:rgba(0,255,150,0.1); color:#00ff96; border-radius:10px; margin-bottom:20px; border: 1px solid #00ff96;">✔ New baby details saved and assigned to ward. Timeline history active.</div>
+            <div style="padding:15px; background:rgba(0,255,150,0.1); color:#00ff96; border-radius:10px; margin-bottom:20px; border: 1px solid #00ff96;">✔ New baby details saved and assigned to ward stay period folder. Timeline history active.</div>
         <?php endif; ?>
         <?php if (isset($_GET['msg']) && $_GET['msg'] === 'Approved'): ?>
             <div style="padding:15px; background:rgba(0,255,150,0.1); color:#00ff96; border-radius:10px; margin-bottom:20px; border: 1px solid #00ff96;">✔ Doctor recommendation Approved. Infant successfully transferred.</div>
