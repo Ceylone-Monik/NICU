@@ -229,6 +229,7 @@ $babies = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 <div class="data-row"><label>Birth Date / Time</label><span id="pop_b_dob"></span></div>
                 <div class="data-row"><label>Weight at Delivery</label><span id="pop_b_weight"></span></div>
                 <div class="data-row"><label>Current Station Location</label><span id="pop_b_ward" style="font-weight:bold; color:#00ff96;"></span></div>
+                <div class="data-row"><label>Admission Bed Number</label><span id="pop_b_bed_number" style="font-weight:bold; color:#00ff96;"></span></div>
                 <div class="data-row"><label>Neonatal Clinical Notes</label><span id="pop_b_notes"></span></div>
             </div>
             <div class="popup-col">
@@ -264,6 +265,7 @@ function openUnifiedModal(babyId) {
             document.getElementById('pop_b_dob').innerText = data.birth_date;
             document.getElementById('pop_b_weight').innerText = data.weight_kg + " kg";
             document.getElementById('pop_b_ward').innerText = data.status === 'Discharged' ? 'Discharged' : data.ward_name + " Ward";
+            document.getElementById('pop_b_bed_number').innerText = data.admission_bed_number || "N/A";
             document.getElementById('pop_b_notes').innerText = data.condition_notes || "None documented";
             
             document.getElementById('pop_m_name').innerText = data.mother_name;

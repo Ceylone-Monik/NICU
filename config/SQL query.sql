@@ -191,6 +191,7 @@ CREATE TABLE `patient_admissions` (
   `gravida` int(11) DEFAULT 1,
   `para` int(11) DEFAULT 0,
   `pregnancy_risk_factors` text DEFAULT NULL,
+  `bed_number` varchar(50) DEFAULT NULL,
   `admitted_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -198,9 +199,9 @@ CREATE TABLE `patient_admissions` (
 -- Dumping data for table `patient_admissions`
 --
 
-INSERT INTO `patient_admissions` (`admission_id`, `patient_id`, `clinic_book_no`, `lmp_date`, `edd_date`, `gravida`, `para`, `pregnancy_risk_factors`, `admitted_at`) VALUES
-(1, 13, 'BAD/2026/004', '2026-05-01', '2027-02-05', 1, 0, 'none', '2026-05-23 04:25:46'),
-(2, 13, 'BAD/2026/005', '2026-05-02', '2027-02-06', 1, 0, 'none', '2026-05-23 06:43:23');
+INSERT INTO `patient_admissions` (`admission_id`, `patient_id`, `clinic_book_no`, `lmp_date`, `edd_date`, `gravida`, `para`, `pregnancy_risk_factors`, `bed_number`, `admitted_at`) VALUES
+(1, 13, 'BAD/2026/004', '2026-05-01', '2027-02-05', 1, 0, 'none', '2026-05-23+001', '2026-05-23 04:25:46'),
+(2, 13, 'BAD/2026/005', '2026-05-02', '2027-02-06', 1, 0, 'none', '2026-05-23+002', '2026-05-23 06:43:23');
 
 -- --------------------------------------------------------
 
