@@ -24,6 +24,11 @@ if (!$mother) {
 $b_stmt = $pdo->prepare("SELECT * FROM babies WHERE mother_id = ? ORDER BY status ASC, birth_date DESC");
 $b_stmt->execute([$mother_id]);
 $active_babies = $b_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// 3. FETCH PREGNANCY ADMISSIONS (STAY HISTORY)
+$adm_stmt = $pdo->prepare("SELECT * FROM patient_admissions WHERE patient_id = ? ORDER BY admitted_at DESC");
+$adm_stmt->execute([$mother_id]);
+$admissions = $adm_stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <!DOCTYPE html>
@@ -127,6 +132,42 @@ $active_babies = $b_stmt->fetchAll(PDO::FETCH_ASSOC);
                 </table>
             <?php endif; ?>
         </div>
+
+        <div class="users-table-container" style="margin-top: 30px;">
+            <div class="table-header">
+                <h3>Maternal Pregnancy Admission & Stay Periods</h3>
+                <p style="color:#aaa; font-size:12px;">Chronological timeline listing all pregnancy admission stay periods with assigned unique bed numbers.</p>
+            </div>
+            
+            <?php if (empty($admissions)): ?>
+                <div class="no-users"><p>📭 No pregnancy admission stay records registered under this profile.</p></div>
+            <?php else: ?>
+                <table class="users-table">
+                    <thead>
+                        <tr>
+                            <th>Stay ID</th>
+                            <th>Stay Bed Number</th>
+                            <th>Clinic Book Reference</th>
+                            <th>LMP Date</th>
+                            <th>EDD Date</th>
+                            <th>Admitted Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($admissions as $adm): ?>
+                        <tr>
+                            <td>#<?php echo $adm['admission_id']; ?></td>
+                            <td><strong style="color: #00ff96;"><?php echo htmlspecialchars($adm['bed_number'] ?: 'N/A'); ?></strong></td>
+                            <td><?php echo htmlspecialchars($adm['clinic_book_no'] ?: 'N/A'); ?></td>
+                            <td><?php echo $adm['lmp_date'] ? date('M d, Y', strtotime($adm['lmp_date'])) : 'N/A'; ?></td>
+                            <td><?php echo $adm['edd_date'] ? date('M d, Y', strtotime($adm['edd_date'])) : 'N/A'; ?></td>
+                            <td><?php echo date('M d, Y - H:i', strtotime($adm['admitted_at'])); ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php endif; ?>
+        </div>
     </div>
 </div>
 
@@ -144,6 +185,7 @@ $active_babies = $b_stmt->fetchAll(PDO::FETCH_ASSOC);
                 <div class="data-row"><label>Birth Date / Time</label><span id="pop_b_dob"></span></div>
                 <div class="data-row"><label>Weight at Delivery</label><span id="pop_b_weight"></span></div>
                 <div class="data-row"><label>Current Station Location</label><span id="pop_b_ward" style="font-weight:bold; color:#00ff96;"></span></div>
+                <div class="data-row"><label>Admission Bed Number</label><span id="pop_b_bed_number" style="font-weight:bold; color:#00ff96;"></span></div>
                 <div class="data-row"><label>Neonatal Notes</label><span id="pop_b_notes"></span></div>
             </div>
             <div class="popup-col">
@@ -178,6 +220,7 @@ function openUnifiedModal(babyId) {
             document.getElementById('pop_b_dob').innerText = data.birth_date;
             document.getElementById('pop_b_weight').innerText = data.weight_kg + " kg";
             document.getElementById('pop_b_ward').innerText = data.status === 'Discharged' ? 'Discharged Home 🏁' : data.ward_name + " Ward";
+            document.getElementById('pop_b_bed_number').innerText = data.admission_bed_number || "N/A";
             document.getElementById('pop_b_notes').innerText = data.condition_notes || "None documented";
             
             document.getElementById('pop_m_name').innerText = data.mother_name;

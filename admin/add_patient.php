@@ -36,13 +36,40 @@ if (isset($_POST['action_type'])) {
             $mother_id = $check_m->fetchColumn();
             
             if (!$mother_id) {
-                $ins_m = $pdo->prepare("INSERT INTO patients (full_name, dob, nic, phone, blood_group, patient_type, is_active_inpatient) VALUES (?, ?, ?, ?, ?, 'Pregnant', 1)");
-                $ins_m->execute([$_POST['full_name'], $_POST['dob'], $nic, $_POST['phone'], $_POST['blood_group']]);
+                $ins_m = $pdo->prepare("INSERT INTO patients (full_name, dob, nic, phone, blood_group, patient_type, is_active_inpatient, gender, clinic_book_no, lmp_date, edd_date, gravida, para, pregnancy_risk_factors) VALUES (?, ?, ?, ?, ?, 'Pregnant', 1, 'Female', ?, ?, ?, ?, ?, ?)");
+                $ins_m->execute([
+                    $_POST['full_name'],
+                    $_POST['dob'],
+                    $nic,
+                    $_POST['phone'],
+                    $_POST['blood_group'],
+                    !empty($_POST['clinic_book_no']) ? $_POST['clinic_book_no'] : null,
+                    !empty($_POST['lmp_date']) ? $_POST['lmp_date'] : null,
+                    !empty($_POST['edd_date']) ? $_POST['edd_date'] : null,
+                    (isset($_POST['gravida']) && $_POST['gravida'] !== '') ? (int)$_POST['gravida'] : null,
+                    (isset($_POST['para']) && $_POST['para'] !== '') ? (int)$_POST['para'] : null,
+                    !empty($_POST['risk_factors']) ? $_POST['risk_factors'] : null
+                ]);
                 $mother_id = $pdo->lastInsertId();
             }
         } else {
-            $up_m = $pdo->prepare("UPDATE patients SET phone = ?, blood_group = ? WHERE id = ?");
-            $up_m->execute([$_POST['phone'], $_POST['blood_group'], $mother_id]);
+            if ($_POST['action_type'] === 'new_delivery') {
+                $up_m = $pdo->prepare("UPDATE patients SET phone = ?, blood_group = ?, gender = 'Female', clinic_book_no = ?, lmp_date = ?, edd_date = ?, gravida = ?, para = ?, pregnancy_risk_factors = ? WHERE id = ?");
+                $up_m->execute([
+                    $_POST['phone'],
+                    $_POST['blood_group'],
+                    !empty($_POST['clinic_book_no']) ? $_POST['clinic_book_no'] : null,
+                    !empty($_POST['lmp_date']) ? $_POST['lmp_date'] : null,
+                    !empty($_POST['edd_date']) ? $_POST['edd_date'] : null,
+                    (isset($_POST['gravida']) && $_POST['gravida'] !== '') ? (int)$_POST['gravida'] : null,
+                    (isset($_POST['para']) && $_POST['para'] !== '') ? (int)$_POST['para'] : null,
+                    !empty($_POST['risk_factors']) ? $_POST['risk_factors'] : null,
+                    $mother_id
+                ]);
+            } else {
+                $up_m = $pdo->prepare("UPDATE patients SET phone = ?, blood_group = ?, gender = 'Female' WHERE id = ?");
+                $up_m->execute([$_POST['phone'], $_POST['blood_group'], $mother_id]);
+            }
         }
 
         // 2. ROUTE ACTIONS: EXISTING CHILD vs NEW PREGNANCY ADMISSION
@@ -58,7 +85,25 @@ if (isset($_POST['action_type'])) {
             $log->execute([$baby_id, $_POST['treatment_ward']]);
         } else {
             // New Pregnancy Admission: Just log maternal parameters without an active baby entry!
-            $ins_adm = $pdo->prepare("INSERT INTO patient_admissions (patient_id, clinic_book_no, lmp_date, edd_date, gravida, para, pregnancy_risk_factors) VALUES (?, ?, ?, ?, ?, ?, ?)");
+            
+            // Generate unique Bed Number: Date+day number (e.g., 20260523+001)
+            $today_date = date('Ymd');
+            $today_pattern = $today_date . '+%';
+            
+            $seq_stmt = $pdo->prepare("SELECT bed_number FROM patient_admissions WHERE bed_number LIKE ? ORDER BY bed_number DESC LIMIT 1");
+            $seq_stmt->execute([$today_pattern]);
+            $last_bed = $seq_stmt->fetchColumn();
+            
+            $next_seq = 1;
+            if ($last_bed) {
+                $parts = explode('+', $last_bed);
+                if (count($parts) > 1) {
+                    $next_seq = (int)$parts[1] + 1;
+                }
+            }
+            $bed_number = $today_date . '+' . str_pad($next_seq, 3, '0', STR_PAD_LEFT);
+
+            $ins_adm = $pdo->prepare("INSERT INTO patient_admissions (patient_id, clinic_book_no, lmp_date, edd_date, gravida, para, pregnancy_risk_factors, bed_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
             $ins_adm->execute([
                 $mother_id,
                 $_POST['clinic_book_no'],
@@ -66,7 +111,8 @@ if (isset($_POST['action_type'])) {
                 $_POST['edd_date'],
                 $_POST['gravida'],
                 $_POST['para'],
-                $_POST['risk_factors']
+                $_POST['risk_factors'],
+                $bed_number
             ]);
         }
 

@@ -314,6 +314,7 @@ $all_babies = $pdo->query($query_babies)->fetchAll(PDO::FETCH_ASSOC);
                 <div class="data-row"><label>Birth Date / Time</label><span id="pop_b_dob"></span></div>
                 <div class="data-row"><label>Weight</label><span id="pop_b_weight"></span></div>
                 <div class="data-row"><label>Current Ward</label><span id="pop_b_ward" style="font-weight:bold; color:#00ff96;"></span></div>
+                <div class="data-row"><label>Admission Bed Number</label><span id="pop_b_bed_number" style="font-weight:bold; color:#00ff96;"></span></div>
                 <div class="data-row"><label>Condition Notes</label><span id="pop_b_notes"></span></div>
             </div>
             <div class="popup-col">
@@ -352,6 +353,7 @@ $all_babies = $pdo->query($query_babies)->fetchAll(PDO::FETCH_ASSOC);
                 document.getElementById('pop_b_dob').innerText = data.birth_date;
                 document.getElementById('pop_b_weight').innerText = data.weight_kg + " kg";
                 document.getElementById('pop_b_ward').innerText = data.ward_name + " Ward";
+                document.getElementById('pop_b_bed_number').innerText = data.admission_bed_number || "N/A";
                 document.getElementById('pop_b_notes').innerText = data.condition_notes || "None documented";
                 
                 document.getElementById('pop_m_name').innerText = data.mother_name;
