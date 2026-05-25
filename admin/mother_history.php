@@ -37,176 +37,396 @@ $admissions = $adm_stmt->fetchAll(PDO::FETCH_ASSOC);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Delivery Archive: <?php echo htmlspecialchars($mother['full_name']); ?></title>
-    <link rel="stylesheet" href="../assets/dashboard.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <style>
-        .profile-summary-card { background: rgba(30, 30, 45, 0.85); padding: 25px; border-radius: 15px; border: 1px solid rgba(255, 255, 255, 0.1); margin-bottom: 30px; text-align: left; }
-        .meta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px; }
-        .meta-block label { display: block; color: #00ff96; font-size: 11px; text-transform: uppercase; font-weight: bold; }
-        .meta-block span { color: #fff; font-size: 14px; }
-        
-        .back-nav-btn { display: inline-flex; align-items: center; gap: 8px; color: #00ff96; text-decoration: none; font-size: 14px; margin-bottom: 20px; font-weight: bold; transition: 0.2s; }
-        .back-nav-btn:hover { color: #fff; transform: translateX(-3px); }
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    
+    <script>
+        (function() {
+            const theme = localStorage.getItem('theme') || 'light';
+            if (theme === 'dark') {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        })();
+    </script>
+    
+    <style type="text/tailwindcss">
+    :root {
+      --card: #f7f8f8;
+      --ring: #1da1f2;
+      --input: #f7f9fa;
+      --muted: #E5E5E6;
+      --accent: #E3ECF6;
+      --border: #e1eaef;
+      --radius: 1.3rem;
+      --chart-1: #1e9df1;
+      --chart-2: #00b87a;
+      --chart-3: #f7b928;
+      --chart-4: #17bf63;
+      --chart-5: #e0245e;
+      --popover: #ffffff;
+      --primary: #1e9df1;
+      --sidebar: #f7f8f8;
+      --font-mono: Menlo, monospace;
+      --font-sans: 'Open Sans', sans-serif;
+      --secondary: #0f1419;
+      --background: #ffffff;
+      --font-serif: Georgia, serif;
+      --foreground: #0f1419;
+      --destructive: #f4212e;
+      --shadow-blur: 0px;
+      --shadow-color: rgba(29,161,242,0.15);
+      --sidebar-ring: #1da1f2;
+      --shadow-spread: 0px;
+      --shadow-opacity: 0;
+      --sidebar-accent: #E3ECF6;
+      --sidebar-border: #e1e8ed;
+      --card-foreground: #0f1419;
+      --shadow-offset-x: 0px;
+      --shadow-offset-y: 2px;
+      --sidebar-primary: #1e9df1;
+      --muted-foreground: #0f1419;
+      --accent-foreground: #1e9df1;
+      --popover-foreground: #0f1419;
+      --primary-foreground: #ffffff;
+      --sidebar-foreground: #0f1419;
+      --secondary-foreground: #ffffff;
+      --destructive-foreground: #ffffff;
+      --sidebar-accent-foreground: #1e9df1;
+      --sidebar-primary-foreground: #ffffff;
+    }
 
-        .clickable-baby-row { cursor: pointer; transition: 0.2s; }
-        .clickable-baby-row:hover { background: rgba(0, 255, 150, 0.05) !important; }
+    .dark {
+      --card: #17181c;
+      --ring: #1da1f2;
+      --input: #22303c;
+      --muted: #181818;
+      --accent: #061622;
+      --border: #242628;
+      --chart-1: #1e9df1;
+      --chart-2: #00b87a;
+      --chart-3: #f7b928;
+      --chart-4: #17bf63;
+      --chart-5: #e0245e;
+      --popover: #000000;
+      --primary: #1c9cf0;
+      --sidebar: #17181c;
+      --secondary: #f0f3f4;
+      --background: #000000;
+      --foreground: #e7e9ea;
+      --destructive: #f4212e;
+      --shadow-color: rgba(29,161,242,0.25);
+      --sidebar-ring: #1da1f2;
+      --sidebar-accent: #061622;
+      --sidebar-border: #38444d;
+      --card-foreground: #d9d9d9;
+      --sidebar-primary: #1da1f2;
+      --muted-foreground: #72767a;
+      --accent-foreground: #1c9cf0;
+      --popover-foreground: #e7e9ea;
+      --primary-foreground: #ffffff;
+      --sidebar-foreground: #d9d9d9;
+      --secondary-foreground: #0f1419;
+      --destructive-foreground: #ffffff;
+      --sidebar-accent-foreground: #1c9cf0;
+      --sidebar-primary-foreground: #ffffff;
+    }
 
-        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(10px); z-index: 2000; justify-content: center; align-items: center; }
-        .modal-card { background: rgba(30, 30, 45, 1); border: 1px solid #ff0080; width: 95%; max-width: 800px; padding: 30px; border-radius: 20px; color: white; max-height: 90vh; overflow-y: auto; }
-        .popup-split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; margin-top: 15px; }
-        .popup-col h4 { border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; margin-bottom: 12px; font-weight: 600; }
-        .data-row { margin-bottom: 10px; font-size: 13px; text-align: left; }
-        .data-row label { display: block; color: #aaa; font-size: 11px; text-transform: uppercase; margin-bottom: 2px; font-weight: 600; }
-        .data-row span { color: #fff; }
-        .journey-log-item { background: rgba(255,255,255,0.02); padding: 12px 18px; border-radius: 8px; border-left: 4px solid #00ff96; font-size: 13px; display: flex; align-items: center; justify-content: space-between; gap: 15px; }
+    @theme inline {
+      --color-card: var(--card);
+      --color-ring: var(--ring);
+      --color-input: var(--input);
+      --color-muted: var(--muted);
+      --color-accent: var(--accent);
+      --color-border: var(--border);
+      --color-radius: var(--radius);
+      --color-chart-1: var(--chart-1);
+      --color-chart-2: var(--chart-2);
+      --color-chart-3: var(--chart-3);
+      --color-chart-4: var(--chart-4);
+      --color-chart-5: var(--chart-5);
+      --color-popover: var(--popover);
+      --color-primary: var(--primary);
+      --color-sidebar: var(--sidebar);
+      --color-font-mono: var(--font-mono);
+      --color-font-sans: var(--font-sans);
+      --color-secondary: var(--secondary);
+      --color-background: var(--background);
+      --color-font-serif: var(--font-serif);
+      --color-foreground: var(--foreground);
+      --color-destructive: var(--destructive);
+      --color-shadow-blur: var(--shadow-blur);
+      --color-shadow-color: var(--shadow-color);
+      --color-sidebar-ring: var(--sidebar-ring);
+      --color-shadow-spread: var(--shadow-spread);
+      --color-shadow-opacity: var(--shadow-opacity);
+      --color-sidebar-accent: var(--sidebar-accent);
+      --color-sidebar-border: var(--sidebar-border);
+      --color-card-foreground: var(--card-foreground);
+      --color-shadow-offset-x: var(--shadow-offset-x);
+      --color-shadow-offset-y: var(--shadow-offset-y);
+      --color-sidebar-primary: var(--sidebar-primary);
+      --color-muted-foreground: var(--muted-foreground);
+      --color-accent-foreground: var(--accent-foreground);
+      --color-popover-foreground: var(--popover-foreground);
+      --color-primary-foreground: var(--primary-foreground);
+      --color-sidebar-foreground: var(--sidebar-foreground);
+      --color-secondary-foreground: var(--secondary-foreground);
+      --color-destructive-foreground: var(--destructive-foreground);
+      --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+      --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    }
+
+    @custom-variant dark (&:where(.dark, .dark *));
+
+    body {
+        font-family: var(--font-sans);
+    }
+
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background-color: rgba(0, 0, 0, 0.7);
+        backdrop-filter: blur(6px);
+        z-index: 50;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem;
+    }
+    .modal-card {
+        background-color: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 2.2rem;
+        width: 100%;
+        max-width: 48rem;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        max-height: 90vh;
+        overflow-y: auto;
+        color: var(--foreground);
+    }
+
+    .journey-log-item {
+        background-color: var(--input);
+        padding: 1rem;
+        border-radius: 0.5rem;
+        border-left-width: 4px;
+        font-size: 13px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        color: var(--foreground);
+        border-color: var(--border);
+    }
     </style>
 </head>
-<body>
+<body class="min-h-screen bg-background text-foreground flex flex-col md:flex-row transition-colors duration-200">
 
-<div class="container-main">
-    <div class="sidebar">
-        <div class="profile-section"><div class="avatar">🧑‍💼</div><h3>Pawan</h3><p>Administrator</p></div>
-        <div class="nav-menu">
-            <div class="nav-item" onclick="window.location.href='dashboard.php?tab=dashboard'"><i class="fas fa-home"></i> Admin Dashboard</div>
-            <div class="nav-item" onclick="window.location.href='wards.php'"><i class="fas fa-procedures"></i> Wards</div>
-            <div class="nav-item" onclick="window.location.href='dashboard.php?tab=staff'"><i class="fas fa-users-cog"></i> Staff Management</div>
-            <div class="nav-item active" onclick="window.location.href='dashboard.php?tab=patients'"><i class="fas fa-hospital-user"></i> Patient Records</div>
-            <div class="nav-item" onclick="window.location.href='dashboard.php?tab=reports'"><i class="fas fa-chart-pie"></i> Reports</div>
+<div class="flex-1 flex flex-col md:flex-row w-full">
+    <!-- Sidebar -->
+    <div class="w-full md:w-72 bg-sidebar border-b md:border-b-0 md:border-r border-sidebar-border text-sidebar-foreground p-6 flex flex-col justify-between flex-shrink-0 transition-colors duration-200">
+        <div>
+            <div class="flex flex-col items-center text-center pb-6 border-b border-sidebar-border mb-6">
+                <div class="w-16 h-16 rounded-full bg-accent text-accent-foreground flex items-center justify-center text-3xl mb-3 shadow-inner">
+                    🧑‍💼
+                </div>
+                <h3 class="text-base font-bold text-foreground">Pawan</h3>
+                <p class="text-xs text-muted-foreground font-semibold uppercase tracking-wider mt-1">Administrator</p>
+            </div>
+            
+            <nav class="space-y-1">
+                <div class="nav-item flex items-center gap-3 px-4 py-3 rounded-radius text-sm font-medium transition-all duration-150 cursor-pointer" id="btn-dashboard" onclick="window.location.href='dashboard.php?tab=dashboard'">
+                    <i class="fas fa-home w-5 text-center text-primary"></i> <span>Admin Dashboard</span>
+                </div>
+                <div class="nav-item flex items-center gap-3 px-4 py-3 rounded-radius text-sm font-medium transition-all duration-150 cursor-pointer" id="btn-wards" onclick="window.location.href='wards.php'">
+                    <i class="fas fa-procedures w-5 text-center text-primary"></i> <span>Wards (Infants)</span>
+                </div>
+                <div class="nav-item flex items-center gap-3 px-4 py-3 rounded-radius text-sm font-medium transition-all duration-150 cursor-pointer" id="btn-staff" onclick="window.location.href='dashboard.php?tab=staff'">
+                    <i class="fas fa-users-cog w-5 text-center text-primary"></i> <span>Staff Management</span>
+                </div>
+                <div class="nav-item active flex items-center gap-3 px-4 py-3 rounded-radius text-sm font-semibold transition-all duration-150 cursor-pointer" id="btn-patients" onclick="window.location.href='dashboard.php?tab=patients'">
+                    <i class="fas fa-hospital-user w-5 text-center"></i> <span>Patient Records</span>
+                </div>
+                <div class="nav-item flex items-center gap-3 px-4 py-3 rounded-radius text-sm font-medium transition-all duration-150 cursor-pointer" id="btn-reports" onclick="window.location.href='dashboard.php?tab=reports'">
+                    <i class="fas fa-chart-pie w-5 text-center text-primary"></i> <span>Reports</span>
+                </div>
+            </nav>
         </div>
-        <div class="logout-section"><a href="../logout.php" class="logout-btn">Logout</a></div>
+
+        <div>
+            <!-- Theme Toggler (Pill Switcher) -->
+            <div class="mt-6 pt-6 border-t border-sidebar-border flex flex-col gap-2">
+                <span class="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Theme Mode</span>
+                <div class="relative flex items-center bg-muted p-1 rounded-full w-full select-none">
+                    <div id="theme-indicator" class="absolute top-1 bottom-1 left-1 rounded-full bg-card shadow-sm transition-all duration-300 w-[calc(50%-4px)]"></div>
+                    <button onclick="setTheme('light')" class="z-10 flex-1 flex items-center justify-center gap-2 py-1.5 text-xs font-semibold transition-colors duration-200 text-foreground" id="theme-btn-light">
+                        <span>☀️ Light</span>
+                    </button>
+                    <button onclick="setTheme('dark')" class="z-10 flex-1 flex items-center justify-center gap-2 py-1.5 text-xs font-medium transition-colors duration-200 text-muted-foreground" id="theme-btn-dark">
+                        <span>🌙 Dark</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Logout -->
+            <div class="mt-4 pt-4 border-t border-sidebar-border">
+                <a href="../logout.php" class="flex items-center gap-3 px-4 py-3 rounded-radius text-sm font-semibold transition-all duration-150 text-destructive hover:bg-destructive/10">
+                    <i class="fas fa-door-open w-5 text-center"></i> <span>Logout</span>
+                </a>
+            </div>
+        </div>
     </div>
 
-    <div class="main-content">
-        <a href="dashboard.php?tab=patients" class="back-nav-btn"><i class="fas fa-arrow-left"></i> Return to Patients Index</a>
+    <!-- Main Content -->
+    <div class="flex-grow flex flex-col p-6 md:p-10 overflow-y-auto">
+        <a href="dashboard.php?tab=patients" class="inline-flex items-center gap-2 text-primary hover:underline font-bold text-sm mb-6 transition-all"><i class="fas fa-arrow-left"></i> Return to Patients Index</a>
 
-        <div class="profile-summary-card">
-            <h2 style="margin:0; color:#00ff96;"><i class="fas fa-female"></i> Maternal File: <?php echo htmlspecialchars($mother['full_name']); ?></h2>
-            <div class="meta-grid">
-                <div class="meta-block"><label>NIC Identity</label><span><?php echo htmlspecialchars($mother['nic']); ?></span></div>
-                <div class="meta-block"><label>Phone Reference</label><span><?php echo htmlspecialchars($mother['phone']); ?></span></div>
-                <div class="meta-block"><label>Clinic Card Ref</label><span><?php echo htmlspecialchars($mother['clinic_book_no'] ?: 'N/A'); ?></span></div>
-                <div class="meta-block"><label>Obstetrics (G/P)</label><span>Gravida <?php echo $mother['gravida']; ?>, Para <?php echo $mother['para']; ?></span></div>
+        <!-- Mother Profile Summary Card -->
+        <div class="card bg-card border border-border rounded-radius p-8 shadow-sm hover:shadow-md transition-all duration-200 mb-8">
+            <h2 class="text-xl font-bold text-foreground mb-6 flex items-center gap-2"><i class="fas fa-female text-primary"></i> Maternal File: <?php echo htmlspecialchars($mother['full_name']); ?></h2>
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
+                <div class="border-b border-border/50 pb-2"><label class="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">NIC Identity</label><span class="text-sm font-semibold text-foreground"><?php echo htmlspecialchars($mother['nic']); ?></span></div>
+                <div class="border-b border-border/50 pb-2"><label class="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Phone Reference</label><span class="text-sm text-foreground"><?php echo htmlspecialchars($mother['phone']); ?></span></div>
+                <div class="border-b border-border/50 pb-2"><label class="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Clinic Card Ref</label><span class="text-sm text-foreground"><?php echo htmlspecialchars($mother['clinic_book_no'] ?: 'N/A'); ?></span></div>
+                <div class="border-b border-border/50 pb-2"><label class="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Obstetrics (G/P)</label><span class="text-sm text-foreground font-semibold">Gravida <?php echo $mother['gravida']; ?>, Para <?php echo $mother['para']; ?></span></div>
             </div>
         </div>
 
-        <div class="users-table-container">
-            <div class="table-header">
-                <h3>👶 Linked Infant Delivery Directory</h3>
-                <p style="color:#aaa; font-size:12px;">Click on any infant below to see their medical overview and detailed timeline history.</p>
+        <!-- Linked Infant Delivery Directory -->
+        <div class="overflow-hidden bg-card border border-border rounded-radius shadow-sm mb-8">
+            <div class="p-5 border-b border-border">
+                <h3 class="text-base font-bold text-foreground">👶 Linked Infant Delivery Directory</h3>
+                <p class="text-xs text-muted-foreground mt-1">Click on any infant below to see their medical overview and detailed timeline history.</p>
             </div>
             
             <?php if (empty($active_babies)): ?>
-                <div class="no-users"><p>📭 No active or historical infant records registered under this profile.</p></div>
+                <div class="p-8 text-center text-muted-foreground text-sm">📭 No active or historical infant records registered under this profile.</div>
             <?php else: ?>
-                <table class="users-table">
-                    <thead>
-                        <tr>
-                            <th>Infant Tracking Name</th>
-                            <th>Gender</th>
-                            <th>Birth Timestamp</th>
-                            <th>Birth Weight</th>
-                            <th>Current System Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($active_babies as $b): ?>
-                        <tr class="clickable-baby-row" onclick="openUnifiedModal(<?php echo $b['baby_id']; ?>)">
-                            <td><strong><?php echo htmlspecialchars($b['baby_name']); ?></strong></td>
-                            <td><?php echo htmlspecialchars($b['baby_gender']); ?></td>
-                            <td><?php echo date('M d, Y - H:i', strtotime($b['birth_date'])); ?></td>
-                            <td><?php echo $b['weight_kg']; ?> kg</td>
-                            <td>
-                                <?php if ($b['status'] === 'Discharged'): ?>
-                                    <span class="role-badge admin" style="text-transform:uppercase; background:rgba(230,126,34,0.15); color:#e67e22; border-color:rgba(230,126,34,0.3);">
-                                        🏁 Discharged Home
-                                    </span>
-                                <?php else: ?>
-                                    <span class="role-badge doctor" style="text-transform:uppercase;">
-                                        Active: <?php echo htmlspecialchars($b['ward_name']); ?> Ward
-                                    </span>
-                                <?php endif; ?>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-muted/50 text-foreground text-xs font-bold uppercase tracking-wider border-b border-border">
+                                <th class="p-4 pl-6">Infant Name</th>
+                                <th class="p-4">Gender</th>
+                                <th class="p-4">Birth Timestamp</th>
+                                <th class="p-4">Birth Weight</th>
+                                <th class="p-4 pr-6">Current Status</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border">
+                            <?php foreach ($active_babies as $b): ?>
+                            <tr class="hover:bg-muted/20 transition-colors duration-150 cursor-pointer" onclick="openUnifiedModal(<?php echo $b['baby_id']; ?>)">
+                                <td class="p-4 pl-6 text-sm font-semibold text-foreground"><?php echo htmlspecialchars($b['baby_name']); ?></td>
+                                <td class="p-4 text-sm text-muted-foreground"><?php echo htmlspecialchars($b['baby_gender']); ?></td>
+                                <td class="p-4 text-sm text-muted-foreground"><?php echo date('M d, Y - H:i', strtotime($b['birth_date'])); ?></td>
+                                <td class="p-4 text-sm text-muted-foreground"><?php echo $b['weight_kg']; ?> kg</td>
+                                <td class="p-4 pr-6 text-sm">
+                                    <?php if ($b['status'] === 'Discharged'): ?>
+                                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20">
+                                            🏁 Discharged
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-primary/10 text-primary border border-primary/20">
+                                            Active: <?php echo htmlspecialchars($b['ward_name']); ?> Ward
+                                        </span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
             <?php endif; ?>
         </div>
 
-        <div class="users-table-container" style="margin-top: 30px;">
-            <div class="table-header">
-                <h3>Maternal Pregnancy Admission & Stay Periods</h3>
-                <p style="color:#aaa; font-size:12px;">Chronological timeline listing all pregnancy admission stay periods with assigned unique bed numbers.</p>
+        <!-- Maternal Pregnancy Admissions Table -->
+        <div class="overflow-hidden bg-card border border-border rounded-radius shadow-sm">
+            <div class="p-5 border-b border-border">
+                <h3 class="text-base font-bold text-foreground">Admission stays history</h3>
+                <p class="text-xs text-muted-foreground mt-1">Chronological listing of all pregnancy admission stay periods with assigned unique bed numbers.</p>
             </div>
             
             <?php if (empty($admissions)): ?>
-                <div class="no-users"><p>📭 No pregnancy admission stay records registered under this profile.</p></div>
+                <div class="p-8 text-center text-muted-foreground text-sm">📭 No pregnancy admission stay records registered under this profile.</div>
             <?php else: ?>
-                <table class="users-table">
-                    <thead>
-                        <tr>
-                            <th>Stay ID</th>
-                            <th>Stay Bed Number</th>
-                            <th>Clinic Book Reference</th>
-                            <th>LMP Date</th>
-                            <th>EDD Date</th>
-                            <th>Admitted Timestamp</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($admissions as $adm): ?>
-                        <?php $has_bed = !empty($adm['bed_number']); ?>
-                        <tr <?php if ($has_bed): ?>class="clickable-baby-row" onclick="openUnifiedModalByBedNumber('<?php echo htmlspecialchars($adm['bed_number']); ?>')"<?php endif; ?>>
-                            <td>#<?php echo $adm['admission_id']; ?></td>
-                            <td><strong style="color: #00ff96;"><?php echo htmlspecialchars($adm['bed_number'] ?: 'N/A'); ?></strong></td>
-                            <td><?php echo htmlspecialchars($adm['clinic_book_no'] ?: 'N/A'); ?></td>
-                            <td><?php echo $adm['lmp_date'] ? date('M d, Y', strtotime($adm['lmp_date'])) : 'N/A'; ?></td>
-                            <td><?php echo $adm['edd_date'] ? date('M d, Y', strtotime($adm['edd_date'])) : 'N/A'; ?></td>
-                            <td><?php echo date('M d, Y - H:i', strtotime($adm['admitted_at'])); ?></td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-muted/50 text-foreground text-xs font-bold uppercase tracking-wider border-b border-border">
+                                <th class="p-4 pl-6">Stay ID</th>
+                                <th class="p-4">Stay Bed Number</th>
+                                <th class="p-4">Clinic Book Reference</th>
+                                <th class="p-4">LMP Date</th>
+                                <th class="p-4">EDD Date</th>
+                                <th class="p-4 pr-6">Admitted Timestamp</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border">
+                            <?php foreach ($admissions as $adm): ?>
+                            <?php $has_bed = !empty($adm['bed_number']); ?>
+                            <tr <?php if ($has_bed): ?>class="hover:bg-muted/20 transition-colors duration-150 cursor-pointer" onclick="openUnifiedModalByBedNumber('<?php echo htmlspecialchars($adm['bed_number']); ?>')"<?php else: ?>class="hover:bg-muted/10 transition-colors duration-150"<?php endif; ?>>
+                                <td class="p-4 pl-6 text-sm text-muted-foreground">#<?php echo $adm['admission_id']; ?></td>
+                                <td class="p-4 text-sm font-semibold text-primary"><?php echo htmlspecialchars($adm['bed_number'] ?: 'N/A'); ?></td>
+                                <td class="p-4 text-sm text-muted-foreground"><?php echo htmlspecialchars($adm['clinic_book_no'] ?: 'N/A'); ?></td>
+                                <td class="p-4 text-sm text-muted-foreground"><?php echo $adm['lmp_date'] ? date('M d, Y', strtotime($adm['lmp_date'])) : 'N/A'; ?></td>
+                                <td class="p-4 text-sm text-muted-foreground"><?php echo $adm['edd_date'] ? date('M d, Y', strtotime($adm['edd_date'])) : 'N/A'; ?></td>
+                                <td class="p-4 pr-6 text-sm text-muted-foreground"><?php echo date('M d, Y - H:i', strtotime($adm['admitted_at'])); ?></td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
             <?php endif; ?>
         </div>
     </div>
 </div>
 
+<!-- Modal -->
 <div id="unifiedModal" class="modal-overlay">
-    <div class="modal-card">
-        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:10px;">
-            <h2 style="color:#ff0080; margin:0;"><i class="fas fa-hospital-user"></i> Clinical Case Overview</h2>
-            <button class="btn" onclick="closeUnifiedModal()" style="background:#ff4757; border:none; padding:5px 12px; color:white; font-weight:bold; cursor:pointer;">&times;</button>
+    <div class="modal-card border-primary/30">
+        <div class="flex justify-between items-center border-b border-border pb-4 mb-6">
+            <h2 class="text-lg font-bold text-primary flex items-center gap-2"><i class="fas fa-hospital-user"></i> Clinical Case Overview</h2>
+            <button onclick="closeUnifiedModal()" class="text-muted-foreground hover:text-foreground text-2xl font-bold cursor-pointer">&times;</button>
         </div>
-        <div class="popup-split-grid">
-            <div class="popup-col">
-                <h4 style="color:#00ff96;"><i class="fas fa-baby"></i> Infant Tracking Records</h4>
-                <div class="data-row"><label>Baby Name</label><span id="pop_b_name"></span></div>
-                <div class="data-row"><label>Gender</label><span id="pop_b_gender"></span></div>
-                <div class="data-row"><label>Birth Date / Time</label><span id="pop_b_dob"></span></div>
-                <div class="data-row"><label>Weight at Delivery</label><span id="pop_b_weight"></span></div>
-                <div class="data-row"><label>Current Station Location</label><span id="pop_b_ward" style="font-weight:bold; color:#00ff96;"></span></div>
-                <div class="data-row"><label>Admission Bed Number</label><span id="pop_b_bed_number" style="font-weight:bold; color:#00ff96;"></span></div>
-                <div class="data-row"><label>Neonatal Notes</label><span id="pop_b_notes"></span></div>
-            </div>
-            <div class="popup-col">
-                <h4 style="color:#ff0080;"><i class="fas fa-female"></i> Mother Profile Reference</h4>
-                <div class="data-row"><label>Mother Full Name</label><span id="pop_m_name"></span></div>
-                <div class="data-row"><label>Clinic Book Reference</label><span id="pop_m_book"></span></div>
-                <div class="data-row"><label>Identity Card (NIC)</label><span id="pop_m_nic"></span></div>
-                <div class="data-row"><label>Phone Contact</label><span id="pop_m_phone"></span></div>
-                <div class="data-row"><label>Blood Specification</label><span id="pop_m_blood"></span></div>
-                <div class="data-row"><label>Expected Delivery Window (EDD)</label><span id="pop_m_edd"></span></div>
-                <div class="data-row"><label>High Risk Conditions Checklist</label><span id="pop_m_risk" style="color:#ff4757; font-weight:bold;"></span></div>
-            </div>        <div style="margin-top: 25px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                <h4 style="color:#ffa502; font-weight:600; margin:0;"><i class="fas fa-route"></i> Clinical Ward Stay Timeline Journey</h4>
-                <div id="stay_period_selector_wrapper" style="display: none; align-items: center; gap: 8px;">
-                    <label style="font-size: 11px; color: #aaa; font-weight: 600; text-transform: uppercase;">Stay Period:</label>
-                    <select id="pop_stay_period_select" onchange="changeStayPeriodFilter()" style="padding: 6px 12px; border-radius: 6px; background: #1a1a2e; border: 1px solid rgba(255,255,255,0.2); color: white; font-size: 12px; cursor: pointer; outline: none;"></select>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-8">
+            <div>
+                <h4 class="text-sm font-bold text-foreground border-b border-border pb-2 mb-4 flex items-center gap-2"><i class="fas fa-baby text-primary"></i> Infant Parameters</h4>
+                <div class="space-y-3">
+                    <div class="flex flex-col border-b border-border/50 pb-2"><label class="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Baby Name</label><span id="pop_b_name" class="text-sm text-foreground font-semibold"></span></div>
+                    <div class="flex flex-col border-b border-border/50 pb-2"><label class="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Gender</label><span id="pop_b_gender" class="text-sm text-foreground"></span></div>
+                    <div class="flex flex-col border-b border-border/50 pb-2"><label class="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Birth Date / Time</label><span id="pop_b_dob" class="text-sm text-foreground"></span></div>
+                    <div class="flex flex-col border-b border-border/50 pb-2"><label class="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Weight at Delivery</label><span id="pop_b_weight" class="text-sm text-foreground"></span></div>
+                    <div class="flex flex-col border-b border-border/50 pb-2"><label class="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Current Station Location</label><span id="pop_b_ward" class="text-sm text-primary font-bold"></span></div>
+                    <div class="flex flex-col border-b border-border/50 pb-2"><label class="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Admission Bed Number</label><span id="pop_b_bed_number" class="text-sm text-primary font-bold"></span></div>
+                    <div class="flex flex-col border-b border-border/50 pb-2"><label class="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Neonatal Notes</label><span id="pop_b_notes" class="text-sm text-foreground"></span></div>
                 </div>
             </div>
-            <div id="timeline_tree_output" style="display: flex; flex-direction: column; gap: 10px; padding-left: 5px;"></div>
+            <div>
+                <h4 class="text-sm font-bold text-rose-500 border-b border-border pb-2 mb-4 flex items-center gap-2"><i class="fas fa-female"></i> Mother Profile Reference</h4>
+                <div class="space-y-3">
+                    <div class="flex flex-col border-b border-border/50 pb-2"><label class="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Mother Full Name</label><span id="pop_m_name" class="text-sm text-foreground font-semibold"></span></div>
+                    <div class="flex flex-col border-b border-border/50 pb-2"><label class="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Clinic Book Reference</label><span id="pop_m_book" class="text-sm text-foreground"></span></div>
+                    <div class="flex flex-col border-b border-border/50 pb-2"><label class="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Identity Card (NIC)</label><span id="pop_m_nic" class="text-sm text-foreground"></span></div>
+                    <div class="flex flex-col border-b border-border/50 pb-2"><label class="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Phone Contact</label><span id="pop_m_phone" class="text-sm text-foreground"></span></div>
+                    <div class="flex flex-col border-b border-border/50 pb-2"><label class="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Blood Specification</label><span id="pop_m_blood" class="text-sm text-foreground"></span></div>
+                    <div class="flex flex-col border-b border-border/50 pb-2"><label class="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Expected Delivery Window (EDD)</label><span id="pop_m_edd" class="text-sm text-foreground"></span></div>
+                    <div class="flex flex-col border-b border-border/50 pb-2"><label class="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">High Risk Conditions Checklist</label><span id="pop_m_risk" class="text-sm text-rose-500 font-bold"></span></div>
+                </div>
+            </div>
+        </div>
+        <div class="mt-8 border-t border-border pt-6">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                <h4 class="text-sm font-bold text-yellow-600 dark:text-yellow-400 flex items-center gap-2"><i class="fas fa-route"></i> Clinical Ward Stay Timeline Journey</h4>
+                <div id="stay_period_selector_wrapper" style="display: none;" class="items-center gap-2">
+                    <label class="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Stay Period:</label>
+                    <select id="pop_stay_period_select" onchange="changeStayPeriodFilter()" class="bg-input border border-border text-foreground rounded-lg px-2.5 py-1 text-xs outline-none focus:border-primary cursor-pointer"></select>
+                </div>
+            </div>
+            <div id="timeline_tree_output" class="flex flex-col gap-3.5 pl-1"></div>
         </div>
     </div>
 </div>
@@ -282,14 +502,14 @@ function openUnifiedModal(babyId, bedNumber = '') {
                     divRowNode.className = "journey-log-item";
                     divRowNode.style.borderLeftColor = accentColor;
                     divRowNode.innerHTML = `
-                        <div>${indicatorIcon} <strong>${log.action_type} to ${log.to_ward}</strong></div>
-                        <div style="font-size:11px; color:#aaa;">In: ${timeOutput}</div>
+                        <div>${indicatorIcon} <strong class="font-bold">${log.action_type} to ${log.to_ward}</strong></div>
+                        <div class="text-[11px] text-muted-foreground">In: ${timeOutput}</div>
                         <div style="color:${accentColor}; font-weight:bold;">${spanDuration}</div>
                     `;
                     treeContainer.appendChild(divRowNode);
                 });
             } else {
-                treeContainer.innerHTML = "<div style='color:#555; font-style:italic;'>No history tracking path recorded for this stay period.</div>";
+                treeContainer.innerHTML = "<div class='text-muted-foreground text-xs italic p-4'>No history tracking path recorded for this stay period.</div>";
             }
         });
 }
@@ -319,6 +539,44 @@ function openUnifiedModalByBedNumber(bedNumber) {
 }
 
 function closeUnifiedModal() { document.getElementById('unifiedModal').style.display = 'none'; }
+
+function setTheme(mode) {
+    const themeIndicator = document.getElementById('theme-indicator');
+    const btnLight = document.getElementById('theme-btn-light');
+    const btnDark = document.getElementById('theme-btn-dark');
+
+    if (mode === 'dark') {
+        document.documentElement.classList.add('dark');
+        localStorage.setItem('theme', 'dark');
+        if(themeIndicator) themeIndicator.style.left = 'calc(50% + 2px)';
+        if(btnDark) {
+            btnDark.classList.remove('text-muted-foreground', 'font-medium');
+            btnDark.classList.add('text-foreground', 'font-semibold');
+        }
+        if(btnLight) {
+            btnLight.classList.remove('text-foreground', 'font-semibold');
+            btnLight.classList.add('text-muted-foreground', 'font-medium');
+        }
+    } else {
+        document.documentElement.classList.remove('dark');
+        localStorage.setItem('theme', 'light');
+        if(themeIndicator) themeIndicator.style.left = '4px';
+        if(btnLight) {
+            btnLight.classList.remove('text-muted-foreground', 'font-medium');
+            btnLight.classList.add('text-foreground', 'font-semibold');
+        }
+        if(btnDark) {
+            btnDark.classList.remove('text-foreground', 'font-semibold');
+            btnDark.classList.add('text-muted-foreground', 'font-medium');
+        }
+    }
+}
+
+// Initialise theme toggler position on page load
+document.addEventListener('DOMContentLoaded', () => {
+    const activeTheme = localStorage.getItem('theme') || 'light';
+    setTheme(activeTheme);
+});
 </script>
 </body>
 </html>
