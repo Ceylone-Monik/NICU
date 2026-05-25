@@ -37,8 +37,8 @@ if (isset($_POST['register_baby'])) {
         $new_baby_id = $pdo->lastInsertId();
 
         // B. Automatically generate the initial timeline track path
-        $log_stmt = $pdo->prepare("INSERT INTO patient_movement_logs (baby_id, action_type, from_ward, to_ward) VALUES (?, 'Admission', 'None', ?)");
-        $log_stmt->execute([$new_baby_id, $_POST['initial_ward']]);
+        $log_stmt = $pdo->prepare("INSERT INTO patient_movement_logs (baby_id, action_type, from_ward, to_ward, bed_number) VALUES (?, 'Admission', 'None', ?, ?)");
+        $log_stmt->execute([$new_baby_id, $_POST['initial_ward'], $active_stay_bed_id]);
 
         $pdo->commit();
         header("Location: wards.php?msg=BabyRegistered");
@@ -56,7 +56,7 @@ if (isset($_POST['approve_recommendation'])) {
         $baby_id = $_POST['baby_id'];
 
         // Get active positioning values before shifting tracking arrays
-        $curr_stmt = $pdo->prepare("SELECT ward_name, recommended_ward FROM babies WHERE baby_id = ?");
+        $curr_stmt = $pdo->prepare("SELECT ward_name, recommended_ward, admission_bed_number FROM babies WHERE baby_id = ?");
         $curr_stmt->execute([$baby_id]);
         $baby_info = $curr_stmt->fetch(PDO::FETCH_ASSOC);
         
@@ -79,8 +79,8 @@ if (isset($_POST['approve_recommendation'])) {
 
             // Open approved entry line track step
             $action = ($new_ward === 'To Discharge') ? 'Discharge' : 'Transfer';
-            $open_stmt = $pdo->prepare("INSERT INTO patient_movement_logs (baby_id, action_type, from_ward, to_ward) VALUES (?, ?, ?, ?)");
-            $open_stmt->execute([$baby_id, $action, $old_ward, $new_ward]);
+            $open_stmt = $pdo->prepare("INSERT INTO patient_movement_logs (baby_id, action_type, from_ward, to_ward, bed_number) VALUES (?, ?, ?, ?, ?)");
+            $open_stmt->execute([$baby_id, $action, $old_ward, $new_ward, $baby_info['admission_bed_number']]);
         }
 
         $pdo->commit();

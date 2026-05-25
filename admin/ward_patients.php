@@ -23,9 +23,11 @@ if (isset($_POST['change_ward']) || isset($_POST['discharge_patient'])) {
         $baby_id = $_POST['baby_id'];
         
         // Get the baby's current ward status before executing changes
-        $curr_stmt = $pdo->prepare("SELECT ward_name FROM babies WHERE baby_id = ?");
+        $curr_stmt = $pdo->prepare("SELECT ward_name, admission_bed_number FROM babies WHERE baby_id = ?");
         $curr_stmt->execute([$baby_id]);
-        $old_ward = $curr_stmt->fetchColumn();
+        $baby_info = $curr_stmt->fetch(PDO::FETCH_ASSOC);
+        $old_ward = $baby_info['ward_name'];
+        $bed_number = $baby_info['admission_bed_number'];
 
         if (isset($_POST['discharge_patient'])) {
             // --- FIXED: DISCHARGE ACTION (NO DELETION) ---
@@ -39,8 +41,8 @@ if (isset($_POST['change_ward']) || isset($_POST['discharge_patient'])) {
             $close_stmt->execute([$baby_id]);
 
             // 2. Add a final tracking step into the audit trail records
-            $open_stmt = $pdo->prepare("INSERT INTO patient_movement_logs (baby_id, action_type, from_ward, to_ward) VALUES (?, 'Discharge', ?, 'Discharged Home')");
-            $open_stmt->execute([$baby_id, $old_ward]);
+            $open_stmt = $pdo->prepare("INSERT INTO patient_movement_logs (baby_id, action_type, from_ward, to_ward, bed_number) VALUES (?, 'Discharge', ?, 'Discharged Home', ?)");
+            $open_stmt->execute([$baby_id, $old_ward, $bed_number]);
 
             // 3. KEEP THE DATA: Update status to 'Discharged' and ward to 'None' instead of deleting!
             $update_baby = $pdo->prepare("UPDATE babies SET status = 'Discharged', ward_name = 'None', recommendation_status = 'None' WHERE baby_id = ?");
@@ -68,8 +70,8 @@ if (isset($_POST['change_ward']) || isset($_POST['discharge_patient'])) {
                 $close_stmt->execute([$baby_id]);
 
                 // 3. Open next step log layer line trace
-                $open_stmt = $pdo->prepare("INSERT INTO patient_movement_logs (baby_id, action_type, from_ward, to_ward) VALUES (?, 'Transfer', ?, ?)");
-                $open_stmt->execute([$baby_id, $old_ward, $new_ward]);
+                $open_stmt = $pdo->prepare("INSERT INTO patient_movement_logs (baby_id, action_type, from_ward, to_ward, bed_number) VALUES (?, 'Transfer', ?, ?, ?)");
+                $open_stmt->execute([$baby_id, $old_ward, $new_ward, $bed_number]);
             }
 
             $pdo->commit();
@@ -243,18 +245,29 @@ $babies = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 <div class="data-row"><label>Expected Delivery Window (EDD)</label><span id="pop_m_edd"></span></div>
                 <div class="data-row"><label>High Risk Conditions Checklist</label><span id="pop_m_risk" style="color:#ff4757; font-weight:bold;"></span></div>
             </div>
-        </div>
-
-        <div style="margin-top: 25px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;">
-            <h4 style="color:#ffa502; font-weight:600; margin-bottom:15px;"><i class="fas fa-route"></i> Clinical Ward Stay Timeline Journey</h4>
+          <div style="margin-top: 25px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h4 style="color:#ffa502; font-weight:600; margin:0;"><i class="fas fa-route"></i> Clinical Ward Stay Timeline Journey</h4>
+                <div id="stay_period_selector_wrapper" style="display: none; align-items: center; gap: 8px;">
+                    <label style="font-size: 11px; color: #aaa; font-weight: 600; text-transform: uppercase;">Stay Period:</label>
+                    <select id="pop_stay_period_select" onchange="changeStayPeriodFilter()" style="padding: 6px 12px; border-radius: 6px; background: #1a1a2e; border: 1px solid rgba(255,255,255,0.2); color: white; font-size: 12px; cursor: pointer; outline: none;"></select>
+                </div>
+            </div>
             <div id="timeline_tree_output" style="display: flex; flex-direction: column; gap: 10px; padding-left: 5px;"></div>
         </div>
     </div>
 </div>
 
 <script>
-function openUnifiedModal(babyId) {
-    fetch('get_baby_details.php?baby_id=' + babyId)
+let currentOpenBabyId = null;
+
+function openUnifiedModal(babyId, bedNumber = '') {
+    currentOpenBabyId = babyId;
+    let url = 'get_baby_details.php?baby_id=' + babyId;
+    if (bedNumber) {
+        url += '&bed_number=' + encodeURIComponent(bedNumber);
+    }
+    fetch(url)
         .then(response => response.json())
         .then(data => {
             if (data.error) { alert(data.error); return; }
@@ -277,6 +290,26 @@ function openUnifiedModal(babyId) {
             document.getElementById('pop_m_p').innerText = data.para || "0";
             document.getElementById('pop_m_edd').innerText = data.edd_date || "N/A";
             document.getElementById('pop_m_risk').innerText = data.pregnancy_risk_factors || "None (Low Risk)";
+
+            // Update Stay Period Dropdown
+            const selectorWrapper = document.getElementById('stay_period_selector_wrapper');
+            const selectDropdown = document.getElementById('pop_stay_period_select');
+            
+            if (data.all_stays && data.all_stays.length > 1) {
+                selectDropdown.innerHTML = "";
+                data.all_stays.forEach((stay) => {
+                    let option = document.createElement('option');
+                    option.value = stay;
+                    option.text = stay;
+                    if (stay === data.selected_bed_number) {
+                        option.selected = true;
+                    }
+                    selectDropdown.appendChild(option);
+                });
+                selectorWrapper.style.display = 'flex';
+            } else {
+                selectorWrapper.style.display = 'none';
+            }
 
             const treeContainer = document.getElementById('timeline_tree_output');
             treeContainer.innerHTML = "";
@@ -305,9 +338,16 @@ function openUnifiedModal(babyId) {
                     treeContainer.appendChild(divRowNode);
                 });
             } else {
-                treeContainer.innerHTML = "<div style='color:#555; font-style:italic;'>No history tracking path recorded.</div>";
+                treeContainer.innerHTML = "<div style='color:#555; font-style:italic;'>No history tracking path recorded for this stay period.</div>";
             }
         });
+}
+
+function changeStayPeriodFilter() {
+    const selectedBed = document.getElementById('pop_stay_period_select').value;
+    if (currentOpenBabyId) {
+        openUnifiedModal(currentOpenBabyId, selectedBed);
+    }
 }
 
 function closeUnifiedModal() { document.getElementById('unifiedModal').style.display = 'none'; }

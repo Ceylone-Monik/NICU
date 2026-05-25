@@ -155,7 +155,8 @@ $admissions = $adm_stmt->fetchAll(PDO::FETCH_ASSOC);
                     </thead>
                     <tbody>
                         <?php foreach ($admissions as $adm): ?>
-                        <tr>
+                        <?php $has_bed = !empty($adm['bed_number']); ?>
+                        <tr <?php if ($has_bed): ?>class="clickable-baby-row" onclick="openUnifiedModalByBedNumber('<?php echo htmlspecialchars($adm['bed_number']); ?>')"<?php endif; ?>>
                             <td>#<?php echo $adm['admission_id']; ?></td>
                             <td><strong style="color: #00ff96;"><?php echo htmlspecialchars($adm['bed_number'] ?: 'N/A'); ?></strong></td>
                             <td><?php echo htmlspecialchars($adm['clinic_book_no'] ?: 'N/A'); ?></td>
@@ -197,19 +198,29 @@ $admissions = $adm_stmt->fetchAll(PDO::FETCH_ASSOC);
                 <div class="data-row"><label>Blood Specification</label><span id="pop_m_blood"></span></div>
                 <div class="data-row"><label>Expected Delivery Window (EDD)</label><span id="pop_m_edd"></span></div>
                 <div class="data-row"><label>High Risk Conditions Checklist</label><span id="pop_m_risk" style="color:#ff4757; font-weight:bold;"></span></div>
+            </div>        <div style="margin-top: 25px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h4 style="color:#ffa502; font-weight:600; margin:0;"><i class="fas fa-route"></i> Clinical Ward Stay Timeline Journey</h4>
+                <div id="stay_period_selector_wrapper" style="display: none; align-items: center; gap: 8px;">
+                    <label style="font-size: 11px; color: #aaa; font-weight: 600; text-transform: uppercase;">Stay Period:</label>
+                    <select id="pop_stay_period_select" onchange="changeStayPeriodFilter()" style="padding: 6px 12px; border-radius: 6px; background: #1a1a2e; border: 1px solid rgba(255,255,255,0.2); color: white; font-size: 12px; cursor: pointer; outline: none;"></select>
+                </div>
             </div>
-        </div>
-
-        <div style="margin-top: 25px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;">
-            <h4 style="color:#ffa502; font-weight:600; margin-bottom:15px;"><i class="fas fa-route"></i> Clinical Ward Stay Timeline Journey</h4>
             <div id="timeline_tree_output" style="display: flex; flex-direction: column; gap: 10px; padding-left: 5px;"></div>
         </div>
     </div>
 </div>
 
 <script>
-function openUnifiedModal(babyId) {
-    fetch('get_baby_details.php?baby_id=' + babyId)
+let currentOpenBabyId = null;
+
+function openUnifiedModal(babyId, bedNumber = '') {
+    currentOpenBabyId = babyId;
+    let url = 'get_baby_details.php?baby_id=' + babyId;
+    if (bedNumber) {
+        url += '&bed_number=' + encodeURIComponent(bedNumber);
+    }
+    fetch(url)
         .then(response => response.json())
         .then(data => {
             if (data.error) { alert(data.error); return; }
@@ -230,6 +241,26 @@ function openUnifiedModal(babyId) {
             document.getElementById('pop_m_blood').innerText = data.mother_blood || "Unknown";
             document.getElementById('pop_m_edd').innerText = data.edd_date || "N/A";
             document.getElementById('pop_m_risk').innerText = data.pregnancy_risk_factors || "None (Low Risk)";
+
+            // Update Stay Period Dropdown
+            const selectorWrapper = document.getElementById('stay_period_selector_wrapper');
+            const selectDropdown = document.getElementById('pop_stay_period_select');
+            
+            if (data.all_stays && data.all_stays.length > 1) {
+                selectDropdown.innerHTML = "";
+                data.all_stays.forEach((stay) => {
+                    let option = document.createElement('option');
+                    option.value = stay;
+                    option.text = stay;
+                    if (stay === data.selected_bed_number) {
+                        option.selected = true;
+                    }
+                    selectDropdown.appendChild(option);
+                });
+                selectorWrapper.style.display = 'flex';
+            } else {
+                selectorWrapper.style.display = 'none';
+            }
 
             const treeContainer = document.getElementById('timeline_tree_output');
             treeContainer.innerHTML = "";
@@ -258,8 +289,32 @@ function openUnifiedModal(babyId) {
                     treeContainer.appendChild(divRowNode);
                 });
             } else {
-                treeContainer.innerHTML = "<div style='color:#555; font-style:italic;'>No history tracking path recorded.</div>";
+                treeContainer.innerHTML = "<div style='color:#555; font-style:italic;'>No history tracking path recorded for this stay period.</div>";
             }
+        });
+}
+
+function changeStayPeriodFilter() {
+    const selectedBed = document.getElementById('pop_stay_period_select').value;
+    if (currentOpenBabyId) {
+        openUnifiedModal(currentOpenBabyId, selectedBed);
+    }
+}
+
+function openUnifiedModalByBedNumber(bedNumber) {
+    if (!bedNumber) return;
+    let url = 'get_baby_details.php?bed_number=' + encodeURIComponent(bedNumber);
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) { 
+                alert(data.error); 
+                return; 
+            }
+            openUnifiedModal(data.baby_id, bedNumber);
+        })
+        .catch(err => {
+            alert("Failed to fetch details for this stay period.");
         });
 }
 
