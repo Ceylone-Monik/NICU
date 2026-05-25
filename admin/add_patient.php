@@ -72,46 +72,63 @@ if (isset($_POST['action_type'])) {
             }
         }
 
+        // Generate unique Bed Number: Date+day number (e.g., 20260523-001)
+        $today_date = date('Ymd');
+        $today_pattern = $today_date . '-%';
+        
+        $seq_stmt = $pdo->prepare("SELECT bed_number FROM patient_admissions WHERE bed_number LIKE ? ORDER BY bed_number DESC LIMIT 1");
+        $seq_stmt->execute([$today_pattern]);
+        $last_bed = $seq_stmt->fetchColumn();
+        
+        $next_seq = 1;
+        if ($last_bed) {
+            $parts = explode('-', $last_bed);
+            if (count($parts) > 1) {
+                $next_seq = (int)$parts[1] + 1;
+            }
+        }
+        $bed_number = $today_date . '-' . str_pad($next_seq, 3, '0', STR_PAD_LEFT);
+
         // 2. ROUTE ACTIONS: EXISTING CHILD vs NEW PREGNANCY ADMISSION
         if ($_POST['action_type'] === 'existing_child_treatment') {
             $baby_id = (int)$_POST['selected_baby_id'];
             
-            // Re-activate child status inside the nursery grid for treatment sessions
-            $up_b = $pdo->prepare("UPDATE babies SET status = 'Active', ward_name = ?, recommendation_status = 'None' WHERE baby_id = ?");
-            $up_b->execute([$_POST['treatment_ward'], $baby_id]);
+            // Extract the mother's current pregnancy profile parameters to duplicate in the admissions record
+            $m_details_stmt = $pdo->prepare("SELECT clinic_book_no, lmp_date, edd_date, gravida, para, pregnancy_risk_factors FROM patients WHERE id = ?");
+            $m_details_stmt->execute([$mother_id]);
+            $m_details = $m_details_stmt->fetch(PDO::FETCH_ASSOC);
 
-            // Register movement log timeline trail row
-            $log = $pdo->prepare("INSERT INTO patient_movement_logs (baby_id, action_type, from_ward, to_ward) VALUES (?, 'Admission', 'Outpatient', ?)");
-            $log->execute([$baby_id, $_POST['treatment_ward']]);
-        } else {
-            // New Pregnancy Admission: Just log maternal parameters without an active baby entry!
-            
-            // Generate unique Bed Number: Date+day number (e.g., 20260523+001)
-            $today_date = date('Ymd');
-            $today_pattern = $today_date . '+%';
-            
-            $seq_stmt = $pdo->prepare("SELECT bed_number FROM patient_admissions WHERE bed_number LIKE ? ORDER BY bed_number DESC LIMIT 1");
-            $seq_stmt->execute([$today_pattern]);
-            $last_bed = $seq_stmt->fetchColumn();
-            
-            $next_seq = 1;
-            if ($last_bed) {
-                $parts = explode('+', $last_bed);
-                if (count($parts) > 1) {
-                    $next_seq = (int)$parts[1] + 1;
-                }
-            }
-            $bed_number = $today_date . '+' . str_pad($next_seq, 3, '0', STR_PAD_LEFT);
-
+            // Create a new stay admission record for this returning treatment stay
             $ins_adm = $pdo->prepare("INSERT INTO patient_admissions (patient_id, clinic_book_no, lmp_date, edd_date, gravida, para, pregnancy_risk_factors, bed_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
             $ins_adm->execute([
                 $mother_id,
-                $_POST['clinic_book_no'],
-                $_POST['lmp_date'],
-                $_POST['edd_date'],
-                $_POST['gravida'],
-                $_POST['para'],
-                $_POST['risk_factors'],
+                $m_details['clinic_book_no'] ?: null,
+                $m_details['lmp_date'] ?: null,
+                $m_details['edd_date'] ?: null,
+                $m_details['gravida'] !== null ? (int)$m_details['gravida'] : null,
+                $m_details['para'] !== null ? (int)$m_details['para'] : null,
+                $m_details['pregnancy_risk_factors'] ?: null,
+                $bed_number
+            ]);
+
+            // Re-activate child status and update bed number inside the nursery grid for treatment sessions
+            $up_b = $pdo->prepare("UPDATE babies SET status = 'Active', ward_name = ?, recommendation_status = 'None', admission_bed_number = ? WHERE baby_id = ?");
+            $up_b->execute([$_POST['treatment_ward'], $bed_number, $baby_id]);
+
+            // Register movement log timeline trail row
+            $log = $pdo->prepare("INSERT INTO patient_movement_logs (baby_id, action_type, from_ward, to_ward, bed_number) VALUES (?, 'Admission', 'Outpatient', ?, ?)");
+            $log->execute([$baby_id, $_POST['treatment_ward'], $bed_number]);
+        } else {
+            // New Pregnancy Admission: Just log maternal parameters without an active baby entry!
+            $ins_adm = $pdo->prepare("INSERT INTO patient_admissions (patient_id, clinic_book_no, lmp_date, edd_date, gravida, para, pregnancy_risk_factors, bed_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+            $ins_adm->execute([
+                $mother_id,
+                !empty($_POST['clinic_book_no']) ? $_POST['clinic_book_no'] : null,
+                !empty($_POST['lmp_date']) ? $_POST['lmp_date'] : null,
+                !empty($_POST['edd_date']) ? $_POST['edd_date'] : null,
+                (isset($_POST['gravida']) && $_POST['gravida'] !== '') ? (int)$_POST['gravida'] : null,
+                (isset($_POST['para']) && $_POST['para'] !== '') ? (int)$_POST['para'] : null,
+                !empty($_POST['risk_factors']) ? $_POST['risk_factors'] : null,
                 $bed_number
             ]);
         }
