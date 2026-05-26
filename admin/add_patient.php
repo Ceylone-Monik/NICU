@@ -296,6 +296,33 @@ if (isset($_POST['action_type'])) {
     body {
         font-family: var(--font-sans);
     }
+
+    .nav-item {
+        color: var(--sidebar-foreground);
+        opacity: 0.8;
+        transition: all 0.15s ease;
+    }
+    .nav-item i {
+        color: var(--primary) !important;
+        transition: all 0.15s ease;
+    }
+    .nav-item:hover {
+        background-color: var(--sidebar-accent) !important;
+        color: var(--sidebar-accent-foreground) !important;
+        opacity: 1;
+    }
+    .nav-item:hover i {
+        color: var(--sidebar-accent-foreground) !important;
+    }
+    .nav-item.active {
+        background-color: var(--sidebar-accent) !important;
+        color: var(--sidebar-accent-foreground) !important;
+        font-weight: 700 !important;
+        opacity: 1;
+    }
+    .nav-item.active i {
+        color: var(--sidebar-accent-foreground) !important;
+    }
     </style>
 </head>
 <body class="min-h-screen bg-background text-foreground flex flex-col md:flex-row transition-colors duration-200">
