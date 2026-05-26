@@ -185,6 +185,33 @@ $admissions = $adm_stmt->fetchAll(PDO::FETCH_ASSOC);
         font-family: var(--font-sans);
     }
 
+    .nav-item {
+        color: var(--sidebar-foreground);
+        opacity: 0.8;
+        transition: all 0.15s ease;
+    }
+    .nav-item i {
+        color: var(--primary) !important;
+        transition: all 0.15s ease;
+    }
+    .nav-item:hover {
+        background-color: var(--sidebar-accent) !important;
+        color: var(--sidebar-accent-foreground) !important;
+        opacity: 1;
+    }
+    .nav-item:hover i {
+        color: var(--sidebar-accent-foreground) !important;
+    }
+    .nav-item.active {
+        background-color: var(--sidebar-accent) !important;
+        color: var(--sidebar-accent-foreground) !important;
+        font-weight: 700 !important;
+        opacity: 1;
+    }
+    .nav-item.active i {
+        color: var(--sidebar-accent-foreground) !important;
+    }
+
     .modal-overlay {
         display: none;
         position: fixed;
